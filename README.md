@@ -1,22 +1,23 @@
-# WTI Next-Trading-Day Forecasting App
+# Future Crude Oil Prediction
 
-This is a lightweight Streamlit web application that deploys the exact trained machine learning pipeline of the WTI next-trading-day forecasting project.
+A Streamlit research/educational dashboard for multi-horizon WTI crude oil reference forecasts.
 
-## Local Setup Instructions
-1. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Run the application:
-   ```bash
-   streamlit run app.py
-   ```
+## Forecast horizons
 
-## Deploying to Render
-1. Upload `app.py`, `requirements.txt`, `Final_Dataset_AI.csv`, and this `README.md` to your GitHub Repository: https://github.com/mdrehanmustufa/future-crude-oil-prediction
-2. Log in to **Render** and create a new **Web Service**.
-3. Connect your repository.
-4. Set the following configuration details:
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `streamlit run app.py --server.address 0.0.0.0 --server.port $PORT`
-5. Click deploy.
+- 1 and 4 sessions: zero-return baseline.
+- 5, 10 and 20 sessions: experimental Extra Trees models.
+
+The Extra Trees models are experimental. In the current chronological holdout evaluation they did not beat the zero-return baseline. Forecasts are estimates, not guarantees or trading advice.
+
+## Run locally
+
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+## Data and refresh
+
+The app prefers `Final_Dataset_AI_dxy_fixed.csv`, then falls back to `Final_Dataset_AI.csv` or the public GitHub raw CSV. It attempts to refresh WTI (`CL=F`) and DXY (`DX-Y.NYB`) from Yahoo Finance after checking recent overlap with the stored series. Inventory refresh requires an `EIA_API_KEY`; otherwise the last stored inventory observation is retained. Oil-specific rig counts are carried forward from the dataset.
+
+The app refreshes/refits on access after its six-hour cache expires or when the refresh button is clicked. This is not an unattended scheduled job.
