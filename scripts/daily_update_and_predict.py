@@ -122,6 +122,15 @@ def main() -> None:
         raise RuntimeError("Saved model returned an invalid next-session estimate.")
 
     forecast_date = next_weekday(feature_date)
+    cutoff_value = source.get("cutoff_date")
+    if cutoff_value:
+        cutoff_date = pd.Timestamp(cutoff_value).normalize()
+        if feature_date < cutoff_date - pd.Timedelta(days=4):
+            raise RuntimeError(
+                f"Latest verified WTI feature row ({feature_date.date()}) is stale "
+                f"relative to completed-session cutoff ({cutoff_date.date()}); "
+                "refusing to publish a stale next-session forecast."
+            )
     brent_close = None
     if "Brent_Close" in updated.columns:
         same_day = pd.to_numeric(
