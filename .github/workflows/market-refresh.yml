@@ -68,7 +68,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Final_Dataset_AI_dxy_fixed.csv data_refresh_status.json daily_forecast.json data_backups/
+          git add Final_Dataset_AI_dxy_fixed.csv data_refresh_status.json data_backups/
+          if [ -f daily_forecast.json ]; then git add daily_forecast.json; fi
           if [ "${GITHUB_EVENT_NAME}" != "schedule" ]; then git add model_artifacts.joblib; fi
           if git diff --cached --quiet; then
             echo "No generated files changed."
