@@ -150,16 +150,18 @@ def load_saved_state():
 
 
 def make_scenario_features(state, wti_shock_pct, dxy_move_pct,
-                           inventory_change_kbbl, rig_change):
+                           inventory_change_kbbl, rig_change, macro_shocks=None):
     df = state["df"]
     idx = state["feature_idx"]
     feature_names = state["feature_names"]
 
+    macro_shocks = macro_shocks or {}
     unchanged = (
         abs(wti_shock_pct) < 1e-12
         and abs(dxy_move_pct) < 1e-12
         and inventory_change_kbbl == 0
         and rig_change == 0
+        and all(abs(float(value)) < 1e-12 for value in macro_shocks.values())
     )
     if unchanged:
         baseline_x = state["models"][1]["latest_x"].copy()
@@ -205,6 +207,32 @@ def make_scenario_features(state, wti_shock_pct, dxy_move_pct,
         raise ValueError("Scenario cannot create negative inventory or rig count.")
     scenario_df.at[idx, inventory_column] = new_inventory
     scenario_df.at[idx, rigs_column] = new_rigs
+
+    macro_feature_groups = {
+        "brent": ["CMD_brent_lag1"],
+        "urals": ["CMD_urals_lag1"],
+        "espo": ["CMD_espo_lag1"],
+        "ttf": ["CMD_ttf_lag1"],
+        "wheat": ["CMD_wheat_lag1"],
+        "urea": ["CMD_urea_lag1"],
+        "gpr": ["GPR_total_lag1m", "GPR_threats_lag1m", "GPR_acts_lag1m"],
+        "tpu": ["TPU_lag1m"],
+        "world_prod": ["EIA_world_prod_lag3m"],
+    }
+    for control, columns in macro_feature_groups.items():
+        shock = float(macro_shocks.get(control, 0.0))
+        factor = 1.0 + shock / 100.0
+        if factor <= 0:
+            raise ValueError(f"{control} scenario must leave the input positive.")
+        if abs(shock) < 1e-12:
+            continue
+        for column in columns:
+            base_value = pd.to_numeric(
+                pd.Series([scenario_df.at[idx, column]]), errors="coerce"
+            ).iloc[0]
+            if pd.isna(base_value) or base_value <= 0:
+                raise ValueError(f"{column} is missing or invalid for this scenario.")
+            scenario_df.at[idx, column] = float(base_value) * factor
 
     recipes, _ = infer_recipes(df)
     candidates = feature_candidates(scenario_df)
@@ -418,7 +446,15 @@ with market_tab:
             ("WTI price history & technical indicators", [n for n in state["feature_names"] if n.startswith("WTI_")],
              "Past returns, momentum, volatility, distance from moving averages and drawdowns."),
             ("US Dollar Index (DXY)", [n for n in state["feature_names"] if n.startswith("DXY_")],
-             "Daily/past returns, momentum and volatility of the US dollar index."),
+             "Daily/past returns, momentum and volatility of the six-currency US dollar index."),
+            ("Other commodity markets", [n for n in state["feature_names"] if n.startswith("CMD_")],
+             "Lagged Brent, Urals, ESPO, European natural gas (TTF), wheat and urea prices."),
+            ("Geopolitical risk (GPR)", [n for n in state["feature_names"] if n.startswith("GPR_")],
+             "Lagged total geopolitical risk, threats and acts indices."),
+            ("Trade policy uncertainty (TPU)", [n for n in state["feature_names"] if n.startswith("TPU_")],
+             "Lagged trade-policy uncertainty index."),
+            ("Global oil production", [n for n in state["feature_names"] if n.startswith("EIA_world_prod_")],
+             "Global oil production series with a three-month lag."),
             ("US oil rig count", [n for n in state["feature_names"] if n.startswith("RIG_")],
              "Rig-count level and changes across recent periods."),
             ("US crude inventories", [n for n in state["feature_names"] if n.startswith("INVENTORY_") or n.startswith("INV_")],
@@ -429,10 +465,11 @@ with market_tab:
             st.caption(detail)
         st.markdown("**Not currently trained model inputs**")
         st.write(
-            "Geopolitical Risk Index (GPR), war/peace headlines, OPEC+ production decisions, "
-            "shipping disruptions, weather, refinery demand and interest rates are not included "
-            "in this saved 53-feature model. They must not be presented as factors that currently "
-            "change its forecast. Brent is shown as a benchmark comparison, not as a trained input."
+            "GPR is included through three lagged historical indices, and TPU is included as a lagged "
+            "historical uncertainty index. They are not live headline/news signals. OPEC+ decisions, "
+            "war/peace headlines beyond the historical GPR series, shipping disruptions, weather, "
+            "refinery demand and interest rates are not separate trained inputs. The live BZ=F card "
+            "is a benchmark quote; the model's CMD_brent_lag1 is a separate stored lagged feature."
         )
 
     with st.expander("Historical benchmark trend"):
