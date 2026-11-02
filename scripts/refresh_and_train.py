@@ -38,6 +38,22 @@ def verify_source(label: str, message: str) -> None:
         )
 
 
+def verify_brent(message: str) -> None:
+    if not message.startswith("Yahoo BZ=F:"):
+        raise RuntimeError(f"Brent benchmark refresh failed: {message}")
+    match = re.search(
+        r"(\d+) valid daily bars; latest (\d{4}-\d{2}-\d{2}) close ([0-9.]+)",
+        message
+    )
+    if not match:
+        raise RuntimeError(f"Brent refresh metadata could not be parsed: {message}")
+    count, latest_date, latest_close = int(match.group(1)), match.group(2), float(match.group(3))
+    if count < 30 or not (5 < latest_close < 1000):
+        raise RuntimeError(
+            f"Brent data failed basic validation: rows={count}, close={latest_close}"
+        )
+
+
 def atomic_json(path: Path, payload: dict) -> None:
     fd, temporary = tempfile.mkstemp(prefix=path.name, suffix=".tmp", dir=path.parent)
     try:
@@ -70,6 +86,7 @@ def main() -> None:
     updated, source = fe.refresh_market_history(base)
     verify_source("Yahoo CL=F", str(source.get("wti", "")))
     verify_source("Yahoo DX-Y.NYB", str(source.get("dxy", "")))
+    verify_brent(str(source.get("brent", "")))
 
     print("Training and evaluating all forecast horizons...")
     state = fe.train_hybrid_horizons(updated)
@@ -115,8 +132,12 @@ def main() -> None:
         "current_wti_close": float(state["current_close"]),
         "wti_source_status": str(source.get("wti", "")),
         "dxy_source_status": str(source.get("dxy", "")),
+        "brent_source_status": str(source.get("brent", "")),
+        "brent_last_date": source.get("brent_last_date"),
+        "brent_last_close": source.get("brent_last_close"),
         "inventory_source_status": str(source.get("inventory", "")),
         "rig_count_status": str(source.get("rig_count", "")),
+        "macro_feature_status": str(source.get("macro_feature_status", "")),
         "eia_api_configured": bool(os.getenv("EIA_API_KEY", "").strip()),
         "feature_count": int(state["feature_count"]),
         "model_metrics": metrics,

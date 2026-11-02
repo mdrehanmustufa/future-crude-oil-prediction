@@ -30,7 +30,7 @@ app_test = AppTest.from_file(str(APP), default_timeout=90)
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert len(app_test.tabs) == 2, f"Expected two main tabs, found {len(app_test.tabs)}"
-assert len(app_test.slider) == 2
+assert len(app_test.slider) == 11, f"Expected 11 WTI/DXY/macro sliders, found {len(app_test.slider)}"
 assert len(app_test.number_input) == 2
 assert len(app_test.selectbox) == 1
 
@@ -99,9 +99,13 @@ scenarios = [
     ("DXY", scenario_function(state, 0.0, 1.0, 0, 0)),
     ("inventory", scenario_function(state, 0.0, 0.0, 1000, 0)),
     ("rig count", scenario_function(state, 0.0, 0.0, 0, 5)),
+    ("Brent commodity", scenario_function(state, 0.0, 0.0, 0, 0, {"brent": 1.0})),
+    ("GPR", scenario_function(state, 0.0, 0.0, 0, 0, {"gpr": 5.0})),
+    ("TPU", scenario_function(state, 0.0, 0.0, 0, 0, {"tpu": 5.0})),
+    ("global production", scenario_function(state, 0.0, 0.0, 0, 0, {"world_prod": 1.0})),
 ]
 for label, (features, _) in scenarios:
-    assert features.shape == (1, 53), f"{label} feature shape mismatch."
+    assert features.shape == (1, len(fe.EXPANDED_FEATURES)), f"{label} feature shape mismatch."
     assert np.isfinite(features.to_numpy(dtype=float)).all(), f"{label} features invalid."
     for record in state["models"].values():
         prediction = float(record["pipeline"].predict(features)[0])
@@ -109,5 +113,5 @@ for label, (features, _) in scenarios:
 
 print("PASS: Streamlit app renders two tabs and scenario controls.")
 print("PASS: Zero-change scenario matches saved baseline.")
-print("PASS: WTI, DXY, inventory and rig scenarios produce finite features.")
+print("PASS: WTI, DXY, inventory, rig, Brent, GPR, TPU and global-production scenarios produce finite features.")
 print("PASS: All horizon predictions remain finite.")

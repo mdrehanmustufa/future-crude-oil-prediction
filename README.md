@@ -1,45 +1,75 @@
-# Future Crude Oil Prediction
+# Crude Oil Market Intelligence
 
-A Streamlit research and education dashboard for WTI reference forecasts and conditional market scenarios.
+A Streamlit research dashboard explaining WTI and Brent benchmarks, providing multi-horizon WTI reference estimates, and supporting a market what-if simulator.
 
-## Main sections
+## Dashboard guide
 
-1. Real Market Forecast — saved WTI close, data date, 1/4/5/10/20 observed-trading-session forecasts, recent price history and holdout metrics.
-2. What-if Scenario — a separate-copy scenario engine for hypothetical WTI, DXY, US crude inventory and oil-rig assumptions. Dependent features are recalculated before inference. The scenario is conditional, not causal.
+1. **Market snapshot** — saved daily WTI and Brent futures closes, source dates, and Brent-minus-WTI spread when both dates match.
+2. **Market forecast** — next-session WTI closing-price reference estimate plus 1/4/5/10/20 observed-trading-session outlook.
+3. **What-if analysis** — 13 controls across WTI, DXY, US crude inventories, US oil rigs, six commodity markets, GPR, TPU and global oil production. All changes are applied to a temporary copy of the latest feature row.
 
-Geopolitical risk is context-only because it is not an input to the trained model.
+The dashboard labels saved daily futures closes and model estimates explicitly; it does not call them live quotes or tomorrow's opening price. The target is WTI future close, not open.
 
-## Models and limitations
+## Trained model inputs
+
+The WTI model now uses 64 numeric features across eight families:
+
+- WTI price history and technical indicators (returns, momentum, volatility, moving-average distance and drawdown).
+- US Dollar Index (DXY) returns, momentum and volatility.
+- Lagged commodity prices: Brent, Urals, ESPO, European natural gas (TTF), wheat and urea.
+- Lagged Geopolitical Risk (GPR) total, threats and acts indices.
+- Lagged Trade Policy Uncertainty (TPU) index.
+- Lagged global oil production.
+- US oil rig-count level and changes.
+- US crude inventory level and changes.
+
+The dataset contains the historical lagged columns for these added macro/commodity factors. Their values are carried forward on appended WTI dates unless their own source is refreshed. GPR and TPU are lagged historical indices, not live news sentiment. The Brent card uses Yahoo continuous futures BZ=F for a visible benchmark quote; the model's CMD_brent_lag1 is a separate stored historical lagged feature.
+
+OPEC+ policy, current war/peace headlines outside the lagged GPR series, tanker/shipping disruptions, weather, refinery utilization and interest rates are not separate trained inputs in this version. A UI slider alone is not a valid model feature; each new factor requires historical data, date alignment, lag policy, retraining and out-of-sample validation.
+
+## Scenario controls and units
+
+- WTI and DXY shocks are percentages applied to the latest complete feature row.
+- Inventory is in thousand barrels (kbbl); +2,000 kbbl is +2 million barrels.
+- Rig count is a number of active oil-directed rigs.
+- The six commodity controls are percentage shocks to the corresponding stored lagged values.
+- The GPR control applies the same proportional shock to total, threats and acts indices.
+- TPU and global production controls apply proportional shocks to their stored lagged values.
+
+Scenarios are conditional feature experiments, not causal economic simulations. A changed input does not prove it causes an oil-price move.
+
+## Model limitations
 
 - 1 and 4 sessions use a zero-return baseline.
 - 5, 10 and 20 sessions use experimental ExtraTrees pipelines.
-- In the latest chronological holdout, ExtraTrees did not beat the zero-return benchmark. The app reports this plainly.
+- The current chronological holdout must be checked after retraining; extra inputs do not guarantee better accuracy.
+- The next-session estimate is a closing-price reference based on the dataset target; it is not an opening-price prediction.
 - Indicative residual bands are not calibrated confidence intervals.
-- Forecasts are estimates for research/education, not trading advice.
+- Forecasts are for research and education, not trading advice.
 
-## Data sources
+## Data sources and freshness
 
-- WTI: Yahoo Finance CL=F, accepted only after recent overlap checks.
+- WTI: Yahoo Finance continuous futures ticker CL=F, accepted only after recent overlap checks against the existing WTI series.
 - DXY: Yahoo Finance DX-Y.NYB, accepted only after recent overlap checks.
-- US crude inventory: EIA weekly commercial stocks when EIA_API_KEY is configured; otherwise the latest stored observation is retained.
+- Brent: Yahoo Finance continuous futures ticker BZ=F, validated for sufficient recent positive daily bars. Stored for benchmark comparison.
+- US crude inventories: EIA weekly commercial stocks when EIA_API_KEY is configured; otherwise the latest stored observation is retained.
 - US oil rig count: carried forward from the stored dataset, not a live daily series.
+- Macro/commodity columns: the original dataset's lagged series; they are not refreshed by dedicated current source connectors in this workflow.
+
+Displayed prices are saved daily futures closes, not guaranteed live quotes. Always compare the same contract/month, source and timestamp when checking another website; continuous futures and named monthly contracts can differ around contract rolls.
 
 ## Automated refresh and retraining
 
-The GitHub Actions workflow at .github/workflows/market-refresh.yml is intended to run on pushes to integration-test for initial validation; on weekdays at 23:00 UTC after it is merged into the default main branch; and manually through workflow_dispatch on the default branch.
+The GitHub Actions workflow runs on pushes to the default branch and test branch, on weekdays at 23:00 UTC when enabled on the default branch, and manually through workflow_dispatch.
 
-The workflow needs GitHub Actions permission to write repository contents. EIA_API_KEY is optional.
+Each successful run refreshes WTI, DXY and Brent data, validates source freshness/overlap, retrains all WTI horizons using the 64-feature matrix, saves model_artifacts.joblib and data_refresh_status.json, runs dashboard/scenario smoke tests, then commits updated generated outputs. The workflow uses the optional EIA_API_KEY secret for inventory updates.
 
-Each successful run refreshes the dataset, retrains all five horizons, saves model_artifacts.joblib and data_refresh_status.json, runs dashboard/scenario smoke tests, then commits generated outputs to the branch where the workflow ran.
-
-The Streamlit app loads the saved dataset, model artifacts and metadata. It does not independently refresh or retrain models at runtime.
+The Streamlit app reads the saved dataset, model artifacts and metadata. It does not refresh data or retrain models during a visitor session. Render auto-deploys from main when the branch receives an update.
 
 ## Local setup
 
-Install dependencies: pip install -r requirements.txt
-
-Refresh and train: python scripts/refresh_and_train.py
-
-Run the app: streamlit run app.py
-
-The integration-test branch is used to validate the workflow without changing main or triggering a Render deployment.
+```bash
+pip install -r requirements.txt
+python scripts/refresh_and_train.py
+streamlit run app.py
+```
