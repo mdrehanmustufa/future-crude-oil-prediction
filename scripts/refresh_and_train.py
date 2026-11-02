@@ -137,6 +137,7 @@ def main() -> None:
         "brent_last_close": source.get("brent_last_close"),
         "inventory_source_status": str(source.get("inventory", "")),
         "rig_count_status": str(source.get("rig_count", "")),
+        "macro_feature_status": str(source.get("macro_feature_status", "")),
         "eia_api_configured": bool(os.getenv("EIA_API_KEY", "").strip()),
         "feature_count": int(state["feature_count"]),
         "model_metrics": metrics,
