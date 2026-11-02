@@ -6,8 +6,8 @@ Important design choices:
   the user's earlier experiment; newly appended market rows have those columns
   recomputed using historical formula inference.
 - Every training label must have target_date <= latest complete feature date.
-- 4-session forecast uses a zero-return baseline.
-- 1-, 5-, 10-, and 20-session ExtraTrees forecasts are experimental.
+- The 4-session forecast uses a zero-return baseline.
+- The 1-, 5-, 10-, and 20-session ExtraTrees forecasts are experimental.
 """
 from __future__ import annotations
 
