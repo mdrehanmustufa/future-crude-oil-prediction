@@ -1,6 +1,6 @@
 {
-  "last_successful_run_utc": "2026-11-02T21:39:41.783023+00:00",
-  "last_model_training_utc": "2026-11-02T21:39:36.171953+00:00",
+  "last_successful_run_utc": "2026-11-02T21:41:50.873577+00:00",
+  "last_model_training_utc": "2026-11-02T21:41:45.460012+00:00",
   "historical_source": "Final_Dataset_AI_dxy_fixed.csv",
   "dataset_rows": 3021,
   "latest_market_date": "2026-10-30",
@@ -58,6 +58,6 @@
       "holdout_rows": 422
     }
   },
-  "last_successful_data_update_utc": "2026-11-02T21:39:41.783023+00:00",
+  "last_successful_data_update_utc": "2026-11-02T21:41:50.873577+00:00",
   "model_retrained_this_run": false
 }
