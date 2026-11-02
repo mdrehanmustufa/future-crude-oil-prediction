@@ -1,6 +1,6 @@
 {
-  "last_successful_run_utc": "2026-11-02T21:33:24.327230+00:00",
-  "last_model_training_utc": "2026-11-02T21:33:24.327230+00:00",
+  "last_successful_run_utc": "2026-11-02T21:34:16.865499+00:00",
+  "last_model_training_utc": "2026-11-02T21:34:16.865499+00:00",
   "historical_source": "Final_Dataset_AI_dxy_fixed.csv",
   "dataset_rows": 3021,
   "latest_market_date": "2026-10-30",
@@ -51,7 +51,7 @@
     },
     "20": {
       "model_type": "ExtraTrees experimental",
-      "holdout_mae_pp": 7.555874104514637,
+      "holdout_mae_pp": 7.555874104514635,
       "zero_return_mae_pp": 7.438371796524327,
       "beats_zero_baseline": false,
       "training_rows": 2365,
