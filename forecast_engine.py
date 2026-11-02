@@ -6,8 +6,8 @@ Important design choices:
   the user's earlier experiment; newly appended market rows have those columns
   recomputed using historical formula inference.
 - Every training label must have target_date <= latest complete feature date.
-- 1- and 4-session forecasts use a zero-return baseline.
-- 5-, 10-, and 20-session ExtraTrees forecasts remain experimental.
+- 4-session forecast uses a zero-return baseline.
+- 1-, 5-, 10-, and 20-session ExtraTrees forecasts are experimental.
 """
 from __future__ import annotations
 
@@ -497,7 +497,7 @@ def compute_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
 def _trees_model(horizon: int):
     # Settings correspond to the best model candidates from prior validation:
     # h=5 ExtraTrees(depth=6, leaf=10); h=10/20 ExtraTrees(depth=3, leaf=30).
-    depth, leaf = (6, 10) if horizon == 5 else (3, 30)
+    depth, leaf = (6, 10) if horizon in (1, 5) else (3, 30)
     return Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
         ("model", ExtraTreesRegressor(
@@ -559,7 +559,7 @@ def train_hybrid_horizons(df: pd.DataFrame):
         y_test = y_all[test_local]
         zero_mae = float(mean_absolute_error(y_test, np.zeros_like(y_test)))
         residuals = y_test.copy()
-        if h in (1, 4):
+        if h == 4:
             holdout_model = ZeroReturnBaseline().fit(X_all.iloc[train_local], y_all[train_local])
             model_type = "Zero-return baseline"
             params = "Cumulative return = 0"
@@ -568,13 +568,13 @@ def train_hybrid_horizons(df: pd.DataFrame):
             holdout_model = _trees_model(h)
             holdout_model.fit(X_all.iloc[train_local], y_all[train_local])
             model_type = "ExtraTrees experimental"
-            params = f"depth={6 if h == 5 else 3}, min_leaf={10 if h == 5 else 30}, trees=100"
+            params = f"depth={6 if h in (1, 5) else 3}, min_leaf={10 if h in (1, 5) else 30}, trees=100"
             test_pred = holdout_model.predict(X_all.iloc[test_local])
         test_mae = float(mean_absolute_error(y_test, test_pred))
         residuals = y_test - test_pred
 
         # Refit final inference model only after measuring the chronological holdout.
-        if h in (1, 4):
+        if h == 4:
             final_model = ZeroReturnBaseline().fit(X_all, y_all)
             predicted_return = 0.0
         else:
