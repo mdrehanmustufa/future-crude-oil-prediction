@@ -30,14 +30,18 @@ app_test = AppTest.from_file(str(APP), default_timeout=90)
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert len(app_test.tabs) == 2, f"Expected two main tabs, found {len(app_test.tabs)}"
-assert len(app_test.slider) == 11, f"Expected 11 WTI/DXY/macro sliders, found {len(app_test.slider)}"
-assert len(app_test.number_input) == 2
-assert len(app_test.selectbox) == 1
+assert len(app_test.slider) == 8, f"Expected exactly eight scenario sliders, found {len(app_test.slider)}"
+assert len(app_test.number_input) == 0
+assert len(app_test.selectbox) == 0
 
 app_test.slider[0].set_value(1.0)
 app_test.slider[1].set_value(1.0)
-app_test.number_input[0].set_value(1000)
-app_test.number_input[1].set_value(5)
+app_test.slider[2].set_value(1.0)
+app_test.slider[3].set_value(2)
+app_test.slider[4].set_value(1.0)
+app_test.slider[5].set_value(5.0)
+app_test.slider[6].set_value(5.0)
+app_test.slider[7].set_value(0.5)
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert not app_test.error, [error.value for error in app_test.error]
@@ -99,7 +103,7 @@ scenarios = [
     ("DXY", scenario_function(state, 0.0, 1.0, 0, 0)),
     ("inventory", scenario_function(state, 0.0, 0.0, 1000, 0)),
     ("rig count", scenario_function(state, 0.0, 0.0, 0, 5)),
-    ("Brent commodity", scenario_function(state, 0.0, 0.0, 0, 0, {"brent": 1.0})),
+    ("commodity basket", scenario_function(state, 0.0, 0.0, 0, 0, {"commodity_basket": 1.0})),
     ("GPR", scenario_function(state, 0.0, 0.0, 0, 0, {"gpr": 5.0})),
     ("TPU", scenario_function(state, 0.0, 0.0, 0, 0, {"tpu": 5.0})),
     ("global production", scenario_function(state, 0.0, 0.0, 0, 0, {"world_prod": 1.0})),
@@ -113,5 +117,5 @@ for label, (features, _) in scenarios:
 
 print("PASS: Streamlit app renders two tabs and scenario controls.")
 print("PASS: Zero-change scenario matches saved baseline.")
-print("PASS: WTI, DXY, inventory, rig, Brent, GPR, TPU and global-production scenarios produce finite features.")
+print("PASS: WTI, DXY, inventory, rig, commodity basket, GPR, TPU and global-production scenarios produce finite features.")
 print("PASS: All horizon predictions remain finite.")
