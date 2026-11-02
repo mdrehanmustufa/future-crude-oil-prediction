@@ -439,7 +439,7 @@ with market_tab:
 
     with st.expander("What information does the model actually use?"):
         st.write(
-            "The model has 53 numeric input features. Many are calculated automatically "
+            "The model has 64 numeric input features. Many are calculated automatically "
             "from previous market observations; they are not 53 separate sliders."
         )
         feature_families = [
@@ -493,7 +493,7 @@ with market_tab:
 with scenario_tab:
     st.subheader("Build a hypothetical market scenario")
     st.write(
-        "Change four inputs that the current model actually uses. The app recalculates dependent "
+        "Change the market, macro, geopolitical and supply assumptions that are included in the 64-feature model. The app recalculates dependent "
         "features on a temporary copy of the data; the saved market history and trained model remain unchanged."
     )
 
@@ -544,17 +544,47 @@ with scenario_tab:
             "They are supply-side indicators, not instant measures of barrels produced."
         )
 
+    with st.expander("Advanced assumptions · commodity markets, geopolitics and global supply"):
+        st.caption(
+            "These nine controls adjust the historical lagged input values used by this model. "
+            "They are hypothetical shocks, not live market feeds."
+        )
+        adv1, adv2, adv3 = st.columns(3)
+        with adv1:
+            brent_move = st.slider("Brent-linked commodity price (%)", -30.0, 30.0, 0.0, 1.0)
+            urals_move = st.slider("Urals crude price (%)", -30.0, 30.0, 0.0, 1.0)
+            espo_move = st.slider("ESPO crude price (%)", -30.0, 30.0, 0.0, 1.0)
+        with adv2:
+            ttf_move = st.slider("European natural gas · TTF (%)", -30.0, 30.0, 0.0, 1.0)
+            wheat_move = st.slider("Wheat price (%)", -30.0, 30.0, 0.0, 1.0)
+            urea_move = st.slider("Urea / fertilizer price (%)", -30.0, 30.0, 0.0, 1.0)
+        with adv3:
+            gpr_move = st.slider(
+                "Geopolitical Risk Index · GPR (%)", -50.0, 100.0, 0.0, 5.0,
+                help="Applies the same proportional shock to total GPR, threats and acts indices."
+            )
+            tpu_move = st.slider("Trade Policy Uncertainty · TPU (%)", -50.0, 100.0, 0.0, 5.0)
+            production_move = st.slider(
+                "Global oil production · 3-month-lagged (%)", -5.0, 5.0, 0.0, 0.5
+            )
+
+    macro_shocks = {
+        "brent": brent_move, "urals": urals_move, "espo": espo_move,
+        "ttf": ttf_move, "wheat": wheat_move, "urea": urea_move,
+        "gpr": gpr_move, "tpu": tpu_move, "world_prod": production_move,
+    }
+
     st.markdown(
-        '<div class="callout-warn"><strong>Geopolitics / GPR:</strong> geopolitical tension is important '
-        'market context, but it is not an input to this trained model. Adding a slider alone would not '
-        'make the model understand war risk. It needs a historical GPR dataset, aligned dates, retraining '
-        'and out-of-sample validation first.</div>',
+        '<div class="callout-warn"><strong>Important:</strong> GPR and TPU inputs are lagged '
+        'historical indices, not real-time news sentiment. The GPR slider moves its total, threats '
+        'and acts series together. The model learns historical associations; the scenario does not '
+        'prove that a geopolitical event causes a specific oil-price move.</div>',
         unsafe_allow_html=True
     )
 
     try:
         scenario_x, scenario_close = make_scenario_features(
-            state, wti_shock, dxy_move, int(inventory_change), int(rig_change)
+            state, wti_shock, dxy_move, int(inventory_change), int(rig_change), macro_shocks
         )
         baseline = models[chosen_horizon]
         baseline_return = float(baseline["return"])
@@ -618,16 +648,16 @@ with scenario_tab:
     except Exception as exc:
         st.error(f"Scenario calculation unavailable: {type(exc).__name__}: {exc}")
 
-    with st.expander("Why are there four sliders when the model has 53 features?"):
+    with st.expander("Why do 64 model features have 13 scenario controls?"):
         st.write(
-            "Only four real-world assumptions are exposed as controls. The remaining model inputs "
-            "are automatically calculated indicators from price history or lagged indicator values."
+            "The 64 features include many automatically calculated WTI and DXY indicators. "
+            "The 13 controls are the assumptions a user can change: WTI, DXY, inventories, rigs, "
+            "six other commodity prices, GPR, TPU and global oil production."
         )
         st.write(
-            "**Not adjustable in this version:** Brent movement, GPR/geopolitical risk, OPEC output, "
-            "weather, tanker/shipping risk, refinery utilization and interest rates. These are either "
-            "context-only or not present in the trained feature set. We will not add fake controls "
-            "that do not change the model calculation."
+            "OPEC+ decisions, shipping disruptions, weather, refinery utilization and interest rates "
+            "are not separate inputs in this version. Do not treat them as factors that change this "
+            "forecast until they have historical data, a defined lag, retraining and out-of-sample validation."
         )
 
 with st.expander("Data freshness, sources and model diagnostics"):
