@@ -1,5 +1,5 @@
 {
-  "last_successful_run_utc": "2026-11-02T20:50:16.567245+00:00",
+  "last_successful_run_utc": "2026-11-02T20:52:10.197409+00:00",
   "historical_source": "Final_Dataset_AI_dxy_fixed.csv",
   "dataset_rows": 3021,
   "latest_market_date": "2026-10-30",
@@ -12,6 +12,7 @@
   "brent_last_close": 117.63999938964844,
   "inventory_source_status": "No EIA_API_KEY configured; using latest stored inventory.",
   "rig_count_status": "US oil-specific rig count is carried forward from the dataset; not a live daily series.",
+  "macro_feature_status": "Original dataset lagged commodity, GPR, TPU and global-production values are carried forward on new WTI rows; no separate live macro-source connectors are configured.",
   "eia_api_configured": false,
   "feature_count": 64,
   "model_metrics": {
