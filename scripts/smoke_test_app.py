@@ -14,6 +14,9 @@ from streamlit.testing.v1 import AppTest
 import forecast_engine as fe
 
 ROOT = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT))
+
 APP = ROOT / "app.py"
 DATA = ROOT / "Final_Dataset_AI_dxy_fixed.csv"
 MODEL = ROOT / "model_artifacts.joblib"
