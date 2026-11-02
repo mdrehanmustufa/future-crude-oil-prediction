@@ -1,4 +1,4 @@
-name: Market refresh and retraining
+name: Daily market update and model training on code changes
 
 on:
   push:
@@ -10,6 +10,7 @@ on:
       - "Final_Dataset_AI_dxy_fixed.csv"
       - "model_artifacts.joblib"
       - "data_refresh_status.json"
+      - "daily_forecast.json"
       - "data_backups/**"
   schedule:
     - cron: "0 23 * * 1-5"
@@ -46,9 +47,16 @@ jobs:
 
       - name: Compile Python files
         run: |
-          python -m py_compile app.py forecast_engine.py scripts/refresh_and_train.py scripts/smoke_test_app.py
+          python -m py_compile app.py forecast_engine.py scripts/refresh_and_train.py scripts/daily_update_and_predict.py scripts/smoke_test_app.py
 
-      - name: Refresh verified market data and retrain models
+      - name: Daily market refresh and inference using the saved model (no retraining)
+        if: github.event_name == 'schedule'
+        env:
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+        run: python scripts/daily_update_and_predict.py
+
+      - name: One-time training after code changes or manual retraining
+        if: github.event_name != 'schedule'
         env:
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
         run: python scripts/refresh_and_train.py
@@ -60,7 +68,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Final_Dataset_AI_dxy_fixed.csv model_artifacts.joblib data_refresh_status.json data_backups/
+          git add Final_Dataset_AI_dxy_fixed.csv data_refresh_status.json daily_forecast.json data_backups/
+          if [ "${GITHUB_EVENT_NAME}" != "schedule" ]; then git add model_artifacts.joblib; fi
           if git diff --cached --quiet; then
             echo "No generated files changed."
           else
