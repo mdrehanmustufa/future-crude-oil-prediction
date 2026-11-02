@@ -66,10 +66,10 @@ def atomic_json(path: Path, payload: dict) -> None:
             os.unlink(temporary)
 
 
-def next_weekday(date_value: pd.Timestamp) -> pd.Timestamp:
-    result = pd.Timestamp(date_value).normalize() + pd.Timedelta(days=1)
+def next_weekday(date_value: datetime) -> datetime:
+    result = datetime.fromisoformat(str(date_value)[:10]) + timedelta(days=1)
     while result.weekday() >= 5:
-        result += pd.Timedelta(days=1)
+        result += timedelta(days=1)
     return result
 
 
