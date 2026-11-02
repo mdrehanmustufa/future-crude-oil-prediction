@@ -3,7 +3,9 @@ name: Market refresh and retraining
 on:
   push:
     branches:
+      - main
       - integration-test
+      - dashboard-ux-refresh
     paths-ignore:
       - "Final_Dataset_AI_dxy_fixed.csv"
       - "model_artifacts.joblib"
