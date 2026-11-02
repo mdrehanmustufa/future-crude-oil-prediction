@@ -1,0 +1,16 @@
+{
+  "generated_at_utc": "2026-11-02T21:33:24.327230+00:00",
+  "source_data_date": "2026-10-30",
+  "next_session_date_estimate": "2026-11-02",
+  "forecast_target": "WTI next-session closing price",
+  "wti_reference_close_usd_bbl": 104.12000274658205,
+  "wti_next_session_estimate_usd_bbl": 104.16306436829211,
+  "predicted_return_pct": 0.041357683993593304,
+  "model_type": "ExtraTrees experimental",
+  "holdout_mae_percentage_points": 1.8789078421141798,
+  "zero_change_mae_percentage_points": 1.882693741601698,
+  "beats_zero_change_baseline": true,
+  "feature_count": 64,
+  "model_retrained_this_run": true,
+  "next_session_date_note": "Weekday estimate; exchange holidays may alter the next session."
+}
