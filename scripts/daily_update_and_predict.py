@@ -129,10 +129,17 @@ def main() -> None:
             f"relative to completed-session cutoff ({cutoff_date.date()}); "
             "refusing to publish a stale next-session forecast."
         )
-    # Forecast target date follows the latest completed session cutoff, not an older
-    # last-available feature row. For example, a Friday row retained after Monday's
-    # close should never produce a Monday-dated next-session forecast.
-    forecast_date = next_weekday(max(feature_date, cutoff_date))
+    # Forecast target date follows the newest complete feature row. If that target
+    # session has already passed the completed-session cutoff, do not label a stale
+    # Friday-based estimate as Monday's or tomorrow's forecast.
+    forecast_date = next_weekday(feature_date)
+    if forecast_date <= cutoff_date:
+        raise RuntimeError(
+            f"Latest complete feature row is {feature_date.date()}, whose next-session "
+            f"target {forecast_date.date()} is already within completed-session cutoff "
+            f"{cutoff_date.date()}. Waiting for a newer verified daily bar rather than "
+            "publishing a stale forecast."
+        )
     brent_close = None
     if "Brent_Close" in updated.columns:
         same_day = pd.to_numeric(
