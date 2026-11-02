@@ -246,7 +246,10 @@ def make_scenario_features(state, wti_shock_pct, dxy_move_pct,
 
 
 def next_weekday(date_value):
-    day = pd.Timestamp(date_value).normalize() + pd.Timedelta(days=1)
+    day = pd.Timestamp(date_value)
+    if day.tzinfo is not None:
+        day = day.tz_convert("America/New_York").tz_localize(None)
+    day = day.normalize() + pd.Timedelta(days=1)
     while day.weekday() >= 5:
         day += pd.Timedelta(days=1)
     return day
@@ -264,7 +267,8 @@ brent_quote = fetch_intraday_quote("BZ=F")
 dxy_quote = fetch_intraday_quote("DX-Y.NYB")
 
 def quote_or_close(quote, close):
-    if quote and np.isfinite(quote.get("price", np.nan)) and quote["price"] > 0:
+    if (quote and np.isfinite(quote.get("price", np.nan)) and quote["price"] > 0
+            and float(quote.get("age_minutes", 1e12)) <= 24 * 60):
         return float(quote["price"]), quote
     return float(close), None
 
