@@ -83,6 +83,7 @@ state = {
     "current_close": float(artifacts["current_close"]),
     "feature_names": list(artifacts["feature_names"]),
     "feature_idx": matches[-1],
+    "latest_x": fe.compute_expanded_features(df).iloc[[matches[-1]]].loc[:, artifacts["feature_names"]],
 }
 assert np.isclose(
     float(status["current_wti_close"]), state["current_close"],
