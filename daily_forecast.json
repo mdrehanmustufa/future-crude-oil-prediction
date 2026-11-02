@@ -1,16 +1,24 @@
 {
-  "generated_at_utc": "2026-11-02T21:37:12.358513+00:00",
+  "generated_at_utc": "2026-11-02T21:39:41.783023+00:00",
   "source_data_date": "2026-10-30",
   "next_session_date_estimate": "2026-11-02",
   "forecast_target": "WTI next-session closing price",
   "wti_reference_close_usd_bbl": 104.12000274658205,
   "wti_next_session_estimate_usd_bbl": 104.16306436829211,
   "predicted_return_pct": 0.041357683993593304,
+  "brent_reference_close_usd_bbl": 117.63999938964844,
   "model_type": "ExtraTrees experimental",
   "holdout_mae_percentage_points": 1.8789078421141798,
   "zero_change_mae_percentage_points": 1.882693741601698,
   "beats_zero_change_baseline": true,
   "feature_count": 64,
-  "model_retrained_this_run": true,
-  "next_session_date_note": "Weekday estimate; exchange holidays may alter the next session."
+  "model_retrained_this_run": false,
+  "source": {
+    "wti": "Yahoo CL=F: 126 overlap rows; median difference 0.000%; 90th-percentile difference 0.000%",
+    "dxy": "Yahoo DX-Y.NYB: 126 overlap rows; median difference 0.000%; 90th-percentile difference 0.000%",
+    "brent": "Yahoo BZ=F: 126 valid daily bars; latest 2026-10-30 close 117.6400; benchmark comparison only, not a WTI model input.",
+    "inventory": "No EIA_API_KEY configured; using latest stored inventory.",
+    "rig_count": "US oil-specific rig count is carried forward from the dataset; not a live daily series."
+  },
+  "next_session_date_note": "Target date is based on completed-session cutoff 2026-11-01; feature source date may be older if the latest provider bar is unavailable. Exchange holidays may alter the next session."
 }
