@@ -92,7 +92,7 @@ def standardize(df: pd.DataFrame) -> pd.DataFrame:
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce", utc=True).dt.tz_localize(None).dt.normalize()
     df = (df.dropna(subset=["Date"]).sort_values("Date")
           .drop_duplicates("Date", keep="last").reset_index(drop=True))
-    for col in RAW_COLUMNS + CORE_FEATURES + ["DXY_Close", "DXY_alt_source_flag", "DXY_missing_flag", "WTI_volume_zero_flag"] + TARGETS + ["ELIGIBLE_core", "ELIGIBLE_extended"]:
+    for col in RAW_COLUMNS + CORE_FEATURES + ["DXY_Close", "Brent_Close", "DXY_alt_source_flag", "DXY_missing_flag", "WTI_volume_zero_flag"] + TARGETS + ["ELIGIBLE_core", "ELIGIBLE_extended"]:
         if col not in df.columns:
             df[col] = np.nan
         df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -286,6 +286,33 @@ def refresh_market_history(base):
     except Exception as exc:
         status["dxy"] = f"DXY fetch failed ({type(exc).__name__}); stored values retained."
 
+    # Brent is stored as a comparison benchmark only. It is deliberately not
+    # included in EXPANDED_FEATURES or the WTI forecasting model.
+    brent = pd.DataFrame()
+    brent_ok = False
+    try:
+        brent_remote = download_daily("BZ=F", start, cutoff)
+        brent = brent_remote[["Date", "Close"]].copy()
+        brent["Close"] = pd.to_numeric(brent["Close"], errors="coerce")
+        brent = brent.dropna(subset=["Date", "Close"])
+        brent = brent[(brent["Close"] > 5) & (brent["Close"] < 1000)]
+        if len(brent) < 30:
+            raise RuntimeError(f"Only {len(brent)} valid Brent daily bars.")
+        brent_latest_date = pd.Timestamp(brent["Date"].max()).normalize()
+        if brent_latest_date < cutoff - pd.Timedelta(days=7):
+            raise RuntimeError(f"Brent source is stale: latest bar {brent_latest_date.date()}.")
+        brent_ok = True
+        brent_latest_close = float(
+            brent.loc[brent["Date"].eq(brent_latest_date), "Close"].iloc[-1]
+        )
+        status["brent"] = (
+            f"Yahoo BZ=F: {len(brent)} valid daily bars; "
+            f"latest {brent_latest_date.date()} close {brent_latest_close:.4f}; "
+            "benchmark comparison only, not a WTI model input."
+        )
+    except Exception as exc:
+        status["brent"] = f"Brent fetch/validation failed ({type(exc).__name__}); stored Brent history retained."
+
     dxy_map = {}
     if dxy_ok:
         dxy_map = dxy.drop_duplicates("Date").set_index("Date")["Close"].to_dict()
@@ -298,6 +325,23 @@ def refresh_market_history(base):
         ret_fill = df["DXY_ret_1d"].isna() & calc_ret.notna()
         df.loc[ret_fill, "DXY_ret_1d"] = calc_ret[ret_fill]
         df["DXY_missing_flag"] = df["DXY_Close"].isna().astype(float)
+
+    if "Brent_Close" not in df.columns:
+        df["Brent_Close"] = np.nan
+    if brent_ok:
+        brent_map = brent.drop_duplicates("Date").set_index("Date")["Close"].to_dict()
+        brent_values = df["Date"].map(brent_map)
+        # Refresh known dates while retaining older history outside the download window.
+        df["Brent_Close"] = brent_values.combine_first(
+            pd.to_numeric(df["Brent_Close"], errors="coerce")
+        )
+        latest_brent_idx = df["Brent_Close"].last_valid_index()
+        if latest_brent_idx is not None:
+            status["brent_last_date"] = str(pd.Timestamp(df.loc[latest_brent_idx, "Date"]).date())
+            status["brent_last_close"] = float(df.loc[latest_brent_idx, "Brent_Close"])
+    else:
+        status["brent_last_date"] = None
+        status["brent_last_close"] = None
 
     if wti_ok and not wti.empty:
         recipes, notes = infer_recipes(base)
