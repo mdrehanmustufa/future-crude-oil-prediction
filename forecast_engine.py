@@ -1,7 +1,7 @@
 """Forecast engine for Future Crude Oil Prediction.
 
 Important design choices:
-- The ordered 53-feature list is frozen and shared by training and inference.
+- The ordered 64-feature list (53 engineered WTI/DXY/supply features plus 11 stored lagged macro/commodity features) is shared by training and inference.
 - Stored core features are retained from the source dataset where present, matching
   the user's earlier experiment; newly appended market rows have those columns
   recomputed using historical formula inference.
