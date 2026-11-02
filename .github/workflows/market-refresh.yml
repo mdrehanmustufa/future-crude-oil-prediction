@@ -62,6 +62,24 @@ jobs:
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
         run: python scripts/refresh_and_train.py
 
+      - name: Verify daily inference reuses the frozen model (test branches only)
+        if: github.event_name == 'push' && github.ref_name != 'main'
+        env:
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+        run: |
+          sha256sum model_artifacts.joblib > /tmp/model-before.sha
+          python scripts/daily_update_and_predict.py
+          sha256sum model_artifacts.joblib > /tmp/model-after.sha
+          diff -u /tmp/model-before.sha /tmp/model-after.sha
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          forecast = json.loads(Path("daily_forecast.json").read_text())
+          assert forecast["model_retrained_this_run"] is False
+          assert forecast["forecast_target"] == "WTI next-session closing price"
+          print("PASS: daily inference wrote forecast without modifying the saved model.")
+          PY
+
       - name: Run dashboard and scenario smoke tests
         run: python scripts/smoke_test_app.py
 
