@@ -57,7 +57,14 @@ EXPANDED_FEATURES = [
     # Inventory changes
     "INVENTORY_change_1", "INVENTORY_change_5", "INVENTORY_change_20", "INVENTORY_pct_change_5",
 ]
-assert len(EXPANDED_FEATURES) == 53 and len(set(EXPANDED_FEATURES)) == 53
+EXOGENOUS_FEATURES = [
+    "CMD_brent_lag1", "CMD_urals_lag1", "CMD_espo_lag1",
+    "CMD_ttf_lag1", "CMD_wheat_lag1", "CMD_urea_lag1",
+    "GPR_total_lag1m", "GPR_threats_lag1m", "GPR_acts_lag1m",
+    "TPU_lag1m", "EIA_world_prod_lag3m",
+]
+EXPANDED_FEATURES = EXPANDED_FEATURES + EXOGENOUS_FEATURES
+assert len(EXPANDED_FEATURES) == 64 and len(set(EXPANDED_FEATURES)) == 64
 
 GITHUB_CSV = (
     "https://raw.githubusercontent.com/mdrehanmustufa/"
@@ -92,7 +99,7 @@ def standardize(df: pd.DataFrame) -> pd.DataFrame:
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce", utc=True).dt.tz_localize(None).dt.normalize()
     df = (df.dropna(subset=["Date"]).sort_values("Date")
           .drop_duplicates("Date", keep="last").reset_index(drop=True))
-    for col in RAW_COLUMNS + CORE_FEATURES + ["DXY_Close", "Brent_Close", "DXY_alt_source_flag", "DXY_missing_flag", "WTI_volume_zero_flag"] + TARGETS + ["ELIGIBLE_core", "ELIGIBLE_extended"]:
+    for col in RAW_COLUMNS + CORE_FEATURES + EXOGENOUS_FEATURES + ["DXY_Close", "Brent_Close", "CMD_missing_flag", "DXY_alt_source_flag", "DXY_missing_flag", "WTI_volume_zero_flag"] + TARGETS + ["ELIGIBLE_core", "ELIGIBLE_extended"]:
         if col not in df.columns:
             df[col] = np.nan
         df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -413,7 +420,7 @@ def refresh_market_history(base):
 
 
 def compute_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Build the same ordered 53-column matrix used by this pipeline.
+    """Build the same ordered 64-column matrix used by this pipeline.
 
     For the ten core columns, retain stored dataset calculations when those columns
     exist, matching the user's prior model experiment. For extra columns, reproduce
@@ -473,6 +480,14 @@ def compute_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
     feat["INVENTORY_change_5"] = inv.diff(5)
     feat["INVENTORY_change_20"] = inv.diff(20)
     feat["INVENTORY_pct_change_5"] = inv.pct_change(5, fill_method=None)
+
+    # Original dataset macro/commodity inputs. These columns already carry
+    # conservative source lags (daily/monthly/three-month); do not shift them again.
+    for col in EXOGENOUS_FEATURES:
+        feat[col] = pd.to_numeric(
+            source.get(col, pd.Series(np.nan, index=source.index)),
+            errors="coerce"
+        )
 
     # Deterministic order, and keep only the frozen model-input list.
     return feat.loc[:, EXPANDED_FEATURES].replace([np.inf, -np.inf], np.nan)
@@ -620,7 +635,7 @@ def train_hybrid_horizons(df: pd.DataFrame):
     }
     # Hard guards for the final inference row and feature ordering.
     assert state["latest_x"].columns.tolist() == EXPANDED_FEATURES
-    assert state["latest_x"].shape == (1, 53)
+    assert state["latest_x"].shape == (1, len(EXPANDED_FEATURES))
     for h, record in models.items():
         assert pd.Timestamp(record["target_cutoff"]) == feature_date
         assert record["price"] > 0
