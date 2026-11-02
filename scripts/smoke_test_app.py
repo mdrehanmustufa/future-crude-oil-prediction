@@ -11,11 +11,11 @@ import numpy as np
 import pandas as pd
 from streamlit.testing.v1 import AppTest
 
-import forecast_engine as fe
-
-ROOT = Path(__file__).resolve().parents[1]
 import sys
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+import forecast_engine as fe
 
 APP = ROOT / "app.py"
 DATA = ROOT / "Final_Dataset_AI_dxy_fixed.csv"
