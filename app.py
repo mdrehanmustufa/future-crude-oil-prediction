@@ -671,6 +671,7 @@ with st.expander("Data freshness, sources and model diagnostics"):
     st.write("DXY source:", status.get("dxy_source_status", "Not recorded"))
     st.write("Inventory source:", status.get("inventory_source_status", "Not recorded"))
     st.write("Rig-count source:", status.get("rig_count_status", "Not recorded"))
+    st.write("Lagged macro/commodity inputs:", status.get("macro_feature_status", "Original stored values; no separate live refresh connector."))
     st.write("EIA API configured:", status.get("eia_api_configured", False))
 
     st.markdown("**Chronological holdout performance**")
