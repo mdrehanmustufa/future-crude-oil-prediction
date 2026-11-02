@@ -276,7 +276,8 @@ def refresh_market_history(base):
     start = max(df["Date"].min(), base_max - pd.Timedelta(days=180))
     status = {"base_date": str(base_max.date()), "cutoff_date": str(cutoff.date(),),
               "wti": "Not refreshed", "dxy": "Not refreshed", "inventory": "",
-              "new_wti_rows": 0, "dxy_repaired": 0, "formula_notes": {}}
+              "new_wti_rows": 0, "dxy_repaired": 0, "formula_notes": {},
+              "macro_feature_status": "Original dataset lagged commodity, GPR, TPU and global-production values are carried forward on new WTI rows; no separate live macro-source connectors are configured."}
     wti, dxy = pd.DataFrame(), pd.DataFrame()
     wti_ok = dxy_ok = False
     try:
