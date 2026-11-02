@@ -326,23 +326,6 @@ def refresh_market_history(base):
         df.loc[ret_fill, "DXY_ret_1d"] = calc_ret[ret_fill]
         df["DXY_missing_flag"] = df["DXY_Close"].isna().astype(float)
 
-    if "Brent_Close" not in df.columns:
-        df["Brent_Close"] = np.nan
-    if brent_ok:
-        brent_map = brent.drop_duplicates("Date").set_index("Date")["Close"].to_dict()
-        brent_values = df["Date"].map(brent_map)
-        # Refresh known dates while retaining older history outside the download window.
-        df["Brent_Close"] = brent_values.combine_first(
-            pd.to_numeric(df["Brent_Close"], errors="coerce")
-        )
-        latest_brent_idx = df["Brent_Close"].last_valid_index()
-        if latest_brent_idx is not None:
-            status["brent_last_date"] = str(pd.Timestamp(df.loc[latest_brent_idx, "Date"]).date())
-            status["brent_last_close"] = float(df.loc[latest_brent_idx, "Brent_Close"])
-    else:
-        status["brent_last_date"] = None
-        status["brent_last_close"] = None
-
     if wti_ok and not wti.empty:
         recipes, notes = infer_recipes(base)
         status["formula_notes"] = notes
@@ -384,6 +367,23 @@ def refresh_market_history(base):
                 dxy_ret = df["DXY_Close"].pct_change(fill_method=None)
                 df.loc[new_mask, "DXY_ret_1d"] = dxy_ret.loc[new_mask]
                 df.loc[new_mask, "DXY_missing_flag"] = df.loc[new_mask, "DXY_Close"].isna().astype(float)
+
+    if "Brent_Close" not in df.columns:
+        df["Brent_Close"] = np.nan
+    if brent_ok:
+        brent_map = brent.drop_duplicates("Date").set_index("Date")["Close"].to_dict()
+        brent_values = df["Date"].map(brent_map)
+        # Apply after WTI rows are appended so new dates receive matching Brent data too.
+        df["Brent_Close"] = brent_values.combine_first(
+            pd.to_numeric(df["Brent_Close"], errors="coerce")
+        )
+        latest_brent_idx = df["Brent_Close"].last_valid_index()
+        if latest_brent_idx is not None:
+            status["brent_last_date"] = str(pd.Timestamp(df.loc[latest_brent_idx, "Date"]).date())
+            status["brent_last_close"] = float(df.loc[latest_brent_idx, "Brent_Close"])
+    else:
+        status["brent_last_date"] = None
+        status["brent_last_close"] = None
 
     eia, eia_note = fetch_eia_inventory()
     status["inventory"] = eia_note
