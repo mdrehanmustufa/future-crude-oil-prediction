@@ -51,13 +51,13 @@ jobs:
           python -m py_compile app.py forecast_engine.py scripts/refresh_and_train.py scripts/daily_update_and_predict.py scripts/smoke_test_app.py
 
       - name: Daily market refresh and inference using the saved model (no retraining)
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' || (github.event_name == 'push' && github.ref_name == 'main')
         env:
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
         run: python scripts/daily_update_and_predict.py
 
       - name: One-time training after code changes or manual retraining
-        if: github.event_name != 'schedule'
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_name != 'main')
         env:
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
         run: python scripts/refresh_and_train.py
