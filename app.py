@@ -162,7 +162,10 @@ def make_scenario_features(state, wti_shock_pct, dxy_move_pct,
         and all(abs(float(v)) < 1e-12 for v in macro_shocks.values())
     )
     if all_zero:
-        return state["latest_x"].loc[:, feature_names].copy(), state["current_close"]
+        base_x = state.get("latest_x")
+        if base_x is None:
+            base_x = state["models"][1]["latest_x"]
+        return base_x.loc[:, feature_names].copy(), state["current_close"]
 
     scenario_df = df.copy()
     wti_factor = (1.0 + live_wti_move / 100.0) * (1.0 + wti_shock_pct / 100.0)
