@@ -1,204 +1,394 @@
-import os
-from datetime import datetime, timezone
-
-import matplotlib.pyplot as plt
+from pathlib import Path
+import json
+import joblib
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 import streamlit as st
 
 from forecast_engine import (
-    HORIZONS, PRIOR_WALK_FORWARD, load_base, refresh_market_history,
-    train_hybrid_horizons,
+    HORIZONS, EXPANDED_FEATURES, standardize,
+    compute_expanded_features, infer_recipes, feature_candidates
 )
+
+ROOT = Path(__file__).resolve().parent
+DATA_FILE = ROOT / "Final_Dataset_AI_dxy_fixed.csv"
+MODEL_FILE = ROOT / "model_artifacts.joblib"
+STATUS_FILE = ROOT / "data_refresh_status.json"
 
 st.set_page_config(
     page_title="Future Crude Oil Prediction",
     page_icon="🛢️",
-    layout="wide",
+    layout="wide"
 )
 
 st.markdown("""
 <style>
 .block-container {max-width: 1450px; padding-top: 1.2rem;}
-.hero {padding: 1.25rem 1.5rem; border: 1px solid #dbe3ef; border-radius: 14px;
-       background: linear-gradient(110deg, #eff6ff, #ffffff); margin-bottom: 1rem;}
+.hero {padding: 1.2rem 1.5rem; border: 1px solid #dbe3ef;
+       border-radius: 14px; background: linear-gradient(110deg,#eff6ff,#fff);
+       margin-bottom: 1rem;}
 .hero h1 {color: #17365d; margin-bottom: .2rem;}
-.small-muted {color: #64748b; font-size: .9rem;}
+.muted {color: #64748b; font-size: .9rem;}
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("""
 <div class="hero">
   <h1>Future Crude Oil Prediction</h1>
-  <div>WTI multi-horizon forecast · Data checks · Experimental machine learning</div>
-  <p class="small-muted">Research and educational use only. Forecasts are estimates, not guarantees or trading advice.</p>
+  <div>WTI multi-horizon market forecast and hypothetical scenario simulator</div>
+  <p class="muted">Research and educational use only. Not investment or trading advice.</p>
 </div>
 """, unsafe_allow_html=True)
 
-if not os.getenv("EIA_API_KEY"):
-    try:
-        if st.secrets.get("EIA_API_KEY"):
-            os.environ["EIA_API_KEY"] = str(st.secrets["EIA_API_KEY"])
-    except Exception:
-        pass
 
+@st.cache_resource
+def load_saved_state():
+    for path in [DATA_FILE, MODEL_FILE, STATUS_FILE]:
+        if not path.exists():
+            raise FileNotFoundError(f"Required project file not found: {path.name}")
 
-@st.cache_resource(ttl=6 * 60 * 60)
-def load_and_fit():
-    base, base_name = load_base()
-    updated, source_status = refresh_market_history(base)
-    fitted = train_hybrid_horizons(updated)
+    df = standardize(pd.read_csv(DATA_FILE, parse_dates=["Date"]))
+    artifacts = joblib.load(MODEL_FILE)
+    with open(STATUS_FILE, "r", encoding="utf-8") as handle:
+        status = json.load(handle)
+
+    required = ["models", "feature_names", "feature_date", "market_date", "current_close"]
+    missing = [key for key in required if key not in artifacts]
+    if missing:
+        raise ValueError(f"Model artifact is missing keys: {missing}")
+
+    feature_names = list(artifacts["feature_names"])
+    if feature_names != EXPANDED_FEATURES:
+        raise ValueError("Saved artifact feature order does not match forecast_engine.py.")
+
+    feature_date = pd.Timestamp(artifacts["feature_date"]).normalize()
+    market_date = pd.Timestamp(artifacts["market_date"]).normalize()
+    current_close = float(artifacts["current_close"])
+
+    matches = df.index[df["Date"].eq(feature_date)].tolist()
+    if not matches:
+        raise ValueError(f"Feature date {feature_date.date()} is not present in saved CSV.")
+
+    feature_idx = matches[-1]
+    csv_close = float(df.loc[feature_idx, "WTI_Close"])
+    if not np.isclose(csv_close, current_close, rtol=1e-5, atol=0.01):
+        raise ValueError("Saved model and dataset do not match: WTI close differs.")
+
+    models = {}
+    for horizon in HORIZONS:
+        record = artifacts["models"].get(horizon, artifacts["models"].get(str(horizon)))
+        if record is None or "pipeline" not in record or "latest_x" not in record:
+            raise ValueError(f"Missing saved pipeline/input for horizon {horizon}.")
+        models[horizon] = record
+
     return {
-        "base_name": base_name,
-        "source": source_status,
-        "loaded_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        **fitted,
+        "df": df, "models": models, "status": status,
+        "feature_date": feature_date, "market_date": market_date,
+        "current_close": current_close, "feature_names": feature_names,
+        "feature_idx": feature_idx,
     }
 
 
-with st.sidebar:
-    st.header("Controls")
-    if st.button("↻ Refresh data and refit models", width="stretch"):
-        load_and_fit.clear()
-        st.rerun()
-    st.caption("Refresh/refit happens on app access after the 6-hour cache expires, or when you click Refresh. This is not a background cron job.")
-    st.divider()
-    st.markdown("**Data sources**")
-    st.markdown("- WTI: Yahoo Finance `CL=F` (source overlap must pass)")
-    st.markdown("- DXY: Yahoo Finance `DX-Y.NYB` (source overlap must pass)")
-    st.markdown("- Crude inventory: optional EIA API if `EIA_API_KEY` is configured")
-    st.markdown("- Oil rigs: last known oil-specific value carried forward")
+def make_scenario_features(state, wti_shock_pct, dxy_move_pct,
+                           inventory_change_kbbl, rig_change):
+    df = state["df"]
+    idx = state["feature_idx"]
+    feature_names = state["feature_names"]
+
+    unchanged = (
+        abs(wti_shock_pct) < 1e-12
+        and abs(dxy_move_pct) < 1e-12
+        and inventory_change_kbbl == 0
+        and rig_change == 0
+    )
+    if unchanged:
+        baseline_x = state["models"][1]["latest_x"].copy()
+        return baseline_x.loc[:, feature_names], state["current_close"]
+
+    scenario_df = df.copy()
+    wti_factor = 1.0 + wti_shock_pct / 100.0
+    dxy_factor = 1.0 + dxy_move_pct / 100.0
+    if wti_factor <= 0 or dxy_factor <= 0:
+        raise ValueError("WTI and DXY scenario prices must remain positive.")
+
+    for column in ["WTI_Open", "WTI_High", "WTI_Low", "WTI_Close"]:
+        value = pd.to_numeric(
+            pd.Series([scenario_df.at[idx, column]]), errors="coerce"
+        ).iloc[0]
+        if pd.notna(value):
+            scenario_df.at[idx, column] = float(value) * wti_factor
+
+    dxy_value = pd.to_numeric(
+        pd.Series([scenario_df.at[idx, "DXY_Close"]]), errors="coerce"
+    ).iloc[0]
+    if pd.isna(dxy_value):
+        raise ValueError("DXY value is missing on the forecast feature date.")
+    scenario_df.at[idx, "DXY_Close"] = float(dxy_value) * dxy_factor
+    scenario_df["DXY_ret_1d"] = pd.to_numeric(
+        scenario_df["DXY_Close"], errors="coerce"
+    ).pct_change(fill_method=None)
+
+    inventory_column = "INV_US_Crude_Stocks_kbbl"
+    rigs_column = "RIG_US_Oil_Rigs"
+    inventory = pd.to_numeric(
+        pd.Series([scenario_df.at[idx, inventory_column]]), errors="coerce"
+    ).iloc[0]
+    rigs = pd.to_numeric(
+        pd.Series([scenario_df.at[idx, rigs_column]]), errors="coerce"
+    ).iloc[0]
+    if pd.isna(inventory) or pd.isna(rigs):
+        raise ValueError("Inventory or rig-count baseline is missing.")
+
+    new_inventory = float(inventory) + inventory_change_kbbl
+    new_rigs = float(rigs) + rig_change
+    if new_inventory < 0 or new_rigs < 0:
+        raise ValueError("Scenario cannot create negative inventory or rig count.")
+    scenario_df.at[idx, inventory_column] = new_inventory
+    scenario_df.at[idx, rigs_column] = new_rigs
+
+    recipes, _ = infer_recipes(df)
+    candidates = feature_candidates(scenario_df)
+    core_features = [
+        "WTI_ret_1d", "WTI_ret_lag1", "WTI_ret_lag2",
+        "WTI_ret_lag4", "WTI_ret_5d_mean", "WTI_vol_20d", "WTI_range_pct"
+    ]
+    unmatched = []
+    for feature in core_features:
+        recipe = recipes.get(feature)
+        if recipe is None or recipe not in candidates.get(feature, {}):
+            unmatched.append(feature)
+        else:
+            scenario_df[feature] = candidates[feature][recipe]
+    if unmatched:
+        raise ValueError("Could not reproduce historical feature formulas: " + ", ".join(unmatched))
+
+    scenario_matrix = compute_expanded_features(scenario_df)
+    scenario_x = scenario_matrix.loc[[idx], feature_names]
+    if scenario_x.shape != (1, len(feature_names)):
+        raise ValueError("Scenario feature matrix has an unexpected shape.")
+    if not np.isfinite(scenario_x.to_numpy(dtype=float)).all():
+        raise ValueError("Scenario produced incomplete/non-finite model features.")
+    return scenario_x, float(scenario_df.at[idx, "WTI_Close"])
+
 
 try:
-    with st.spinner("Loading historical data, checking source overlap and fitting horizon models..."):
-        state = load_and_fit()
+    state = load_saved_state()
 except Exception as exc:
-    st.error(f"Forecast initialization failed: {type(exc).__name__}: {exc}")
-    st.info("Confirm that `Final_Dataset_AI_dxy_fixed.csv` or `Final_Dataset_AI.csv` is in the project folder, or that the GitHub raw fallback is reachable. Check requirements.txt and the error above.")
+    st.error(f"Saved forecast files could not be loaded: {type(exc).__name__}: {exc}")
+    st.info("The refresh workflow must first create the CSV, model_artifacts.joblib and data_refresh_status.json.")
     st.stop()
 
 df = state["df"]
-source = state["source"]
-feature_date = pd.Timestamp(state["feature_date"])
-market_date = pd.Timestamp(state["market_date"])
-current_close = float(state["current_close"])
 models = state["models"]
-
-if source.get("wti", "").startswith("Yahoo CL=F:") and "failed" not in source.get("wti", "").lower():
-    st.success(f"WTI source check: {source.get('wti')}")
-else:
-    st.warning(f"WTI source status: {source.get('wti', 'unknown')}")
-if source.get("dxy", "").startswith("Yahoo DX-Y.NYB:") and "failed" not in source.get("dxy", "").lower():
-    st.success(f"DXY source check: {source.get('dxy')}")
-else:
-    st.warning(f"DXY source status: {source.get('dxy', 'unknown')}")
-
-lag_days = (market_date - feature_date).days
-if lag_days > 0:
-    st.warning(f"Latest market row is {market_date.date()}, but the latest complete 53-feature row is {feature_date.date()}. Forecasts use the complete feature row, not the newer incomplete row.")
-if lag_days > 3:
-    st.error("Feature data is more than three calendar days behind the latest market row. Treat forecasts as stale until inputs are refreshed/repaired.")
+status = state["status"]
+feature_date = state["feature_date"]
+market_date = state["market_date"]
+current_close = state["current_close"]
 
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("WTI reference close", f"${current_close:,.2f}")
+m1.metric("WTI reference close", f"USD {current_close:,.2f}")
 m2.metric("Forecast feature date", str(feature_date.date()))
 m3.metric("Latest market date", str(market_date.date()))
-m4.metric("Model input features", str(state["feature_count"]))
+m4.metric("Model input features", str(len(state["feature_names"])))
 
-tab_forecast, tab_scenario, tab_checks = st.tabs(["Market Forecast", "What-if Scenario", "Data & Model Checks"])
-labels = {1: "Next session", 4: "4 trading sessions", 5: "5 sessions (~1 week)", 10: "10 sessions (~2 weeks)", 20: "20 sessions (~1 month)"}
+if market_date > feature_date:
+    st.warning(
+        f"Latest market row is {market_date.date()}, but the latest complete "
+        f"feature row is {feature_date.date()}. Forecast uses the complete row."
+    )
 
-with tab_forecast:
-    st.subheader("Multi-horizon reference forecasts")
+labels = {
+    1: "Next trading session", 4: "4 trading sessions",
+    5: "5 trading sessions", 10: "10 trading sessions",
+    20: "20 trading sessions"
+}
+market_tab, scenario_tab = st.tabs(["1. Real Market Forecast", "2. What-if Scenario"])
+
+with market_tab:
+    st.subheader("WTI multi-horizon reference forecast")
     rows = []
-    for h in HORIZONS:
-        model = models[h]
+    for horizon in HORIZONS:
+        record = models[horizon]
         rows.append({
-            "Horizon": labels[h],
-            "Model status": model["model_type"],
-            "Reference forecast price": model["price"],
-            "Predicted cumulative return (%)": model["return"] * 100,
-            "Indicative lower band": model["low_price"],
-            "Indicative upper band": model["high_price"],
-            "Holdout MAE (pp)": model["test_mae"] * 100,
-            "Zero-return MAE (pp)": model["zero_mae"] * 100,
-            "Beats zero baseline": model["beats_zero"],
+            "Horizon": labels[horizon],
+            "Model": record["model_type"],
+            "Forecast price (USD)": record["price"],
+            "Expected return (%)": record["return"] * 100,
+            "Indicative lower band": record["low_price"],
+            "Indicative upper band": record["high_price"],
+            "Holdout MAE (pp)": record["test_mae"] * 100,
+            "Zero-baseline MAE (pp)": record["zero_mae"] * 100,
+            "Beats zero baseline": record["beats_zero"]
         })
-    forecast_table = pd.DataFrame(rows)
-    st.dataframe(forecast_table.style.format({
-        "Reference forecast price": "${:,.2f}",
-        "Predicted cumulative return (%)": "{:+.3f}%",
-        "Indicative lower band": "${:,.2f}",
-        "Indicative upper band": "${:,.2f}",
-        "Holdout MAE (pp)": "{:.3f}",
-        "Zero-return MAE (pp)": "{:.3f}",
-    }), width="stretch", hide_index=True)
-    st.caption("Horizon is observed trading sessions, not calendar days. Bands use a chronological holdout residual distribution and are indicative—not calibrated confidence intervals.")
-    st.warning("The ExtraTrees outputs for 5, 10 and 20 sessions are experimental. In earlier experiments, their MAE improvements over the zero-return benchmark were small and did not consistently carry over to the earlier held-out test.")
+    forecast_df = pd.DataFrame(rows)
+    st.dataframe(
+        forecast_df.style.format({
+            "Forecast price (USD)": "{:,.2f}",
+            "Expected return (%)": "{:+.3f}%",
+            "Indicative lower band": "{:,.2f}",
+            "Indicative upper band": "{:,.2f}",
+            "Holdout MAE (pp)": "{:.3f}",
+            "Zero-baseline MAE (pp)": "{:.3f}"
+        }),
+        width="stretch", hide_index=True
+    )
+    st.caption(
+        "Horizons count observed trading sessions, not calendar days. "
+        "Price bands are indicative residual bands, not calibrated confidence intervals."
+    )
+    weak_horizons = [str(h) for h in HORIZONS if not models[h]["beats_zero"]]
+    if weak_horizons:
+        st.warning(
+            "On the current chronological holdout, the model does not beat the "
+            "zero-return benchmark at horizon(s): " + ", ".join(weak_horizons) +
+            ". ExtraTrees results are experimental, not proven improvements."
+        )
 
     st.subheader("Recent WTI close history")
     history = df[["Date", "WTI_Close"]].dropna().tail(252)
     fig, ax = plt.subplots(figsize=(12, 4))
     ax.plot(history["Date"], history["WTI_Close"], label="WTI close")
-    ax.axvline(feature_date, linestyle="--", label="Forecast feature cutoff")
+    ax.axvline(feature_date, linestyle="--", label="Forecast feature date")
     ax.set_ylabel("USD per barrel")
-    ax.grid(alpha=.25)
+    ax.grid(alpha=0.25)
     ax.legend()
     fig.tight_layout()
     st.pyplot(fig, clear_figure=True)
     plt.close(fig)
 
-with tab_scenario:
-    st.subheader("Scenario controls")
-    st.info("Prediction-changing sliders are intentionally disabled for now. The deployed tree models are experimental, and changing feature values independently can create impossible combinations (for example, changing price momentum without recalculating its dependent lags, volatility and drawdown).")
-    chosen_h = st.selectbox("Forecast horizon", HORIZONS, format_func=lambda h: labels[h])
-    chosen_model = models[chosen_h]
-    st.metric("Current model type", chosen_model["model_type"])
-    st.metric("Reference forecast price", f"${chosen_model['price']:,.2f}")
-    st.slider("WTI volatility (display only; not connected to forecast)", 0.0, 0.15, 0.03, disabled=True, help="Disabled intentionally; this input does not alter model predictions.")
-    st.slider("DXY momentum (display only; not connected to forecast)", -0.10, 0.10, 0.0, disabled=True, help="Disabled intentionally; this input does not alter model predictions.")
-    st.caption("Feature importance and correlations are not causal effects. We will only enable scenario calculations after a consistent scenario feature-recalculation method is built and tested.")
 
-with tab_checks:
-    st.subheader("Current run: chronological holdout diagnostics")
-    diag = state["diagnostics"].copy()
-    st.dataframe(diag.style.format({"Model MAE (pp)": "{:.3f}", "Zero-return MAE (pp)": "{:.3f}"}), width="stretch", hide_index=True)
-    if not diag["Beats zero baseline"].all():
-        st.info("At least one horizon does not beat the zero-return baseline on this holdout. The app reports this rather than masking it.")
+with scenario_tab:
+    st.subheader("Hypothetical market assumptions")
+    st.write(
+        "Change the latest complete market row. The app recalculates dependent "
+        "features on a separate copy; saved baseline data and model files are untouched."
+    )
+    left, right = st.columns(2)
+    with left:
+        wti_shock = st.slider(
+            "Hypothetical WTI price shock (%)",
+            min_value=-20.0, max_value=20.0, value=0.0, step=0.5
+        )
+        dxy_move = st.slider(
+            "Hypothetical DXY movement (%)",
+            min_value=-10.0, max_value=10.0, value=0.0, step=0.25
+        )
+    with right:
+        inventory_change = st.number_input(
+            "US crude inventory change (kbbl)",
+            min_value=-50000, max_value=50000, value=0, step=1000
+        )
+        rig_change = st.number_input(
+            "US oil rig-count change",
+            min_value=-150, max_value=150, value=0, step=5
+        )
 
-    st.subheader("Previous four-fold walk-forward experiment")
-    prior_rows = []
-    for h in HORIZONS:
-        r = PRIOR_WALK_FORWARD[h]
-        prior_rows.append({
-            "Horizon sessions": h,
-            "Historical candidate": r["candidate"],
-            "Candidate mean MAE (pp)": r["candidate_mae_pp"],
-            "Zero-return mean MAE (pp)": r["zero_mae_pp"],
-            "Folds beating zero": f"{r['folds_beating_zero']}/{r['folds']}",
-            "Evidence status": "Historical experiment; not this run's test result",
+    chosen_horizon = st.selectbox(
+        "Forecast horizon", HORIZONS, format_func=lambda h: labels[h]
+    )
+
+    try:
+        scenario_x, scenario_close = make_scenario_features(
+            state, wti_shock, dxy_move, int(inventory_change), int(rig_change)
+        )
+        baseline = models[chosen_horizon]
+        baseline_return = float(baseline["return"])
+        baseline_price = float(baseline["price"])
+        scenario_return = float(baseline["pipeline"].predict(scenario_x)[0])
+        scenario_price = scenario_close * (1.0 + scenario_return)
+
+        if not np.isfinite(scenario_return) or not np.isfinite(scenario_price) or scenario_price <= 0:
+            raise ValueError("Model returned an invalid scenario forecast.")
+
+        delta_return_pp = (scenario_return - baseline_return) * 100
+        delta_price = scenario_price - baseline_price
+        st.divider()
+        a, b, c = st.columns(3)
+        a.metric("Scenario WTI reference price", f"USD {scenario_close:,.2f}")
+        b.metric(
+            "Scenario forecast price", f"USD {scenario_price:,.2f}",
+            delta=f"USD {delta_price:+,.2f} vs baseline"
+        )
+        c.metric(
+            "Scenario expected return", f"{scenario_return * 100:+.3f}%",
+            delta=f"{delta_return_pp:+.3f} pp vs baseline"
+        )
+
+        comparison = pd.DataFrame([
+            {
+                "Output": "Baseline", "Reference WTI close": current_close,
+                "Expected return (%)": baseline_return * 100,
+                "Forecast price": baseline_price
+            },
+            {
+                "Output": "Hypothetical scenario", "Reference WTI close": scenario_close,
+                "Expected return (%)": scenario_return * 100,
+                "Forecast price": scenario_price
+            }
+        ])
+        st.dataframe(
+            comparison.style.format({
+                "Reference WTI close": "{:,.2f}",
+                "Expected return (%)": "{:+.3f}%",
+                "Forecast price": "{:,.2f}"
+            }),
+            width="stretch", hide_index=True
+        )
+        st.caption(
+            f"Horizon: {chosen_horizon} observed trading sessions. "
+            "Price change includes the direct WTI reference-price shock; compare "
+            "expected returns to isolate the model's changed response."
+        )
+        if chosen_horizon in (5, 10, 20):
+            st.warning(
+                "This horizon uses an experimental ExtraTrees model. "
+                "Its latest holdout MAE did not beat the zero-return baseline."
+            )
+        else:
+            st.info(
+                "This horizon uses a zero-return baseline. It does not create a "
+                "directional return forecast when assumptions change."
+            )
+    except Exception as exc:
+        st.error(f"Scenario calculation unavailable: {type(exc).__name__}: {exc}")
+
+    st.caption(
+        "This is a conditional model scenario, not a causal economic simulation. "
+        "Feature relationships are not proof that changing an input causes a price "
+        "movement. Geopolitical risk is context-only because it is not a trained input."
+    )
+
+
+with st.expander("Data and model diagnostics"):
+    st.subheader("Saved automation run")
+    st.write("Last successful refresh (UTC):", status.get("last_successful_run_utc", "Not recorded"))
+    st.write("Rows in saved dataset:", status.get("dataset_rows", len(df)))
+    st.write("WTI source:", status.get("wti_source_status", "Not recorded"))
+    st.write("DXY source:", status.get("dxy_source_status", "Not recorded"))
+    st.write("Inventory source:", status.get("inventory_source_status", "Not recorded"))
+    st.write("Rig count source:", status.get("rig_count_status", "Not recorded"))
+    st.write("EIA API configured:", status.get("eia_api_configured", False))
+
+    st.subheader("Chronological holdout performance")
+    diagnostic_rows = []
+    for horizon in HORIZONS:
+        record = models[horizon]
+        diagnostic_rows.append({
+            "Horizon": horizon, "Model": record["model_type"],
+            "Model MAE (pp)": record["test_mae"] * 100,
+            "Zero baseline MAE (pp)": record["zero_mae"] * 100,
+            "Beats zero baseline": record["beats_zero"],
+            "Holdout rows": record["test_rows"]
         })
-    st.dataframe(pd.DataFrame(prior_rows).style.format({"Candidate mean MAE (pp)": "{:.4f}", "Zero-return mean MAE (pp)": "{:.4f}"}), width="stretch", hide_index=True)
-
-    st.subheader("Source and freshness status")
-    source_rows = [
-        {"Check": "Historical file", "Result": state["base_name"]},
-        {"Check": "WTI source", "Result": source.get("wti", "")},
-        {"Check": "DXY source", "Result": source.get("dxy", "")},
-        {"Check": "Inventory", "Result": source.get("inventory", "")},
-        {"Check": "Rig count", "Result": source.get("rig_count", "")},
-        {"Check": "Base market date", "Result": source.get("base_date", "")},
-        {"Check": "Refresh cutoff date", "Result": source.get("cutoff_date", "")},
-        {"Check": "Latest market date", "Result": source.get("latest_market_date", str(market_date.date()))},
-        {"Check": "Latest complete feature date", "Result": source.get("latest_feature_date", str(feature_date.date()))},
-        {"Check": "Rows after refresh", "Result": source.get("rows_after_refresh", len(df))},
-        {"Check": "Refreshed/refit at (UTC)", "Result": state["loaded_at"]},
-        {"Check": "Features returned in frozen order", "Result": f"{state['feature_count']} ordered columns"},
-    ]
-    source_status_df = pd.DataFrame(source_rows)
-    source_status_df["Result"] = source_status_df["Result"].astype(str)
-    st.dataframe(source_status_df, width="stretch", hide_index=True)
-    if source.get("formula_notes"):
-        st.subheader("Historical feature-formula checks for refreshed rows")
-        st.dataframe(pd.DataFrame([{"Feature": f, "Formula check": note} for f, note in source["formula_notes"].items()]), width="stretch", hide_index=True)
-    st.caption("Refresh is cache-driven (six hours or button click), not an unattended scheduled job. Inventory may stay at its last-known value without an EIA key; the oil-specific rig count is carried forward.")
+    st.dataframe(
+        pd.DataFrame(diagnostic_rows).style.format({
+            "Model MAE (pp)": "{:.3f}",
+            "Zero baseline MAE (pp)": "{:.3f}"
+        }),
+        width="stretch", hide_index=True
+    )
+    st.caption(
+        "The app loads saved model artifacts. It does not refresh market data or "
+        "train models at runtime. Scheduled GitHub Actions handles those tasks."
+    )

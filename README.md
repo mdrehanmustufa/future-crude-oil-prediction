@@ -1,23 +1,45 @@
 # Future Crude Oil Prediction
 
-A Streamlit research/educational dashboard for multi-horizon WTI crude oil reference forecasts.
+A Streamlit research and education dashboard for WTI reference forecasts and conditional market scenarios.
 
-## Forecast horizons
+## Main sections
 
-- 1 and 4 sessions: zero-return baseline.
-- 5, 10 and 20 sessions: experimental Extra Trees models.
+1. Real Market Forecast — saved WTI close, data date, 1/4/5/10/20 observed-trading-session forecasts, recent price history and holdout metrics.
+2. What-if Scenario — a separate-copy scenario engine for hypothetical WTI, DXY, US crude inventory and oil-rig assumptions. Dependent features are recalculated before inference. The scenario is conditional, not causal.
 
-The Extra Trees models are experimental. In the current chronological holdout evaluation they did not beat the zero-return baseline. Forecasts are estimates, not guarantees or trading advice.
+Geopolitical risk is context-only because it is not an input to the trained model.
 
-## Run locally
+## Models and limitations
 
-```bash
-pip install -r requirements.txt
-streamlit run app.py
-```
+- 1 and 4 sessions use a zero-return baseline.
+- 5, 10 and 20 sessions use experimental ExtraTrees pipelines.
+- In the latest chronological holdout, ExtraTrees did not beat the zero-return benchmark. The app reports this plainly.
+- Indicative residual bands are not calibrated confidence intervals.
+- Forecasts are estimates for research/education, not trading advice.
 
-## Data and refresh
+## Data sources
 
-The app prefers `Final_Dataset_AI_dxy_fixed.csv`, then falls back to `Final_Dataset_AI.csv` or the public GitHub raw CSV. It attempts to refresh WTI (`CL=F`) and DXY (`DX-Y.NYB`) from Yahoo Finance after checking recent overlap with the stored series. Inventory refresh requires an `EIA_API_KEY`; otherwise the last stored inventory observation is retained. Oil-specific rig counts are carried forward from the dataset.
+- WTI: Yahoo Finance CL=F, accepted only after recent overlap checks.
+- DXY: Yahoo Finance DX-Y.NYB, accepted only after recent overlap checks.
+- US crude inventory: EIA weekly commercial stocks when EIA_API_KEY is configured; otherwise the latest stored observation is retained.
+- US oil rig count: carried forward from the stored dataset, not a live daily series.
 
-The app refreshes/refits on access after its six-hour cache expires or when the refresh button is clicked. This is not an unattended scheduled job.
+## Automated refresh and retraining
+
+The GitHub Actions workflow at .github/workflows/market-refresh.yml is intended to run on pushes to integration-test for initial validation; on weekdays at 23:00 UTC after it is merged into the default main branch; and manually through workflow_dispatch on the default branch.
+
+The workflow needs GitHub Actions permission to write repository contents. EIA_API_KEY is optional.
+
+Each successful run refreshes the dataset, retrains all five horizons, saves model_artifacts.joblib and data_refresh_status.json, runs dashboard/scenario smoke tests, then commits generated outputs to the branch where the workflow ran.
+
+The Streamlit app loads the saved dataset, model artifacts and metadata. It does not independently refresh or retrain models at runtime.
+
+## Local setup
+
+Install dependencies: pip install -r requirements.txt
+
+Refresh and train: python scripts/refresh_and_train.py
+
+Run the app: streamlit run app.py
+
+The integration-test branch is used to validate the workflow without changing main or triggering a Render deployment.
