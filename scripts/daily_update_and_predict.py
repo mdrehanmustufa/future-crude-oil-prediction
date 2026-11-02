@@ -121,16 +121,18 @@ def main() -> None:
     if not np.isfinite(predicted_close) or predicted_close <= 0:
         raise RuntimeError("Saved model returned an invalid next-session estimate.")
 
-    forecast_date = next_weekday(feature_date)
     cutoff_value = source.get("cutoff_date")
-    if cutoff_value:
-        cutoff_date = pd.Timestamp(cutoff_value).normalize()
-        if feature_date < cutoff_date - pd.Timedelta(days=4):
-            raise RuntimeError(
-                f"Latest verified WTI feature row ({feature_date.date()}) is stale "
-                f"relative to completed-session cutoff ({cutoff_date.date()}); "
-                "refusing to publish a stale next-session forecast."
-            )
+    cutoff_date = pd.Timestamp(cutoff_value).normalize() if cutoff_value else feature_date
+    if feature_date < cutoff_date - pd.Timedelta(days=4):
+        raise RuntimeError(
+            f"Latest verified WTI feature row ({feature_date.date()}) is stale "
+            f"relative to completed-session cutoff ({cutoff_date.date()}); "
+            "refusing to publish a stale next-session forecast."
+        )
+    # Forecast target date follows the latest completed session cutoff, not an older
+    # last-available feature row. For example, a Friday row retained after Monday's
+    # close should never produce a Monday-dated next-session forecast.
+    forecast_date = next_weekday(max(feature_date, cutoff_date))
     brent_close = None
     if "Brent_Close" in updated.columns:
         same_day = pd.to_numeric(
@@ -162,7 +164,11 @@ def main() -> None:
             "inventory": str(source.get("inventory", "")),
             "rig_count": str(source.get("rig_count", "")),
         },
-        "next_session_date_note": "Weekday estimate; exchange holidays may alter the next session.",
+        "next_session_date_note": (
+            f"Target date is based on completed-session cutoff {cutoff_date.date()}; "
+            "feature source date may be older if the latest provider bar is unavailable. "
+            "Exchange holidays may alter the next session."
+        ),
     }
 
     old_status = {}
