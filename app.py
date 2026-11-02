@@ -297,7 +297,7 @@ def quote_status(quote):
     stamp = pd.Timestamp(quote["timestamp_utc"]).tz_convert("America/New_York")
     age = quote["age_minutes"]
     freshness = "Recent provider quote" if age <= 30 else "Last available quote"
-    return f"{freshness} · {stamp:%d %b %Y, %I:%M %p} ET · may be delayed"
+    return f"{quote.get('source', 'Market data provider')} · {freshness} · {stamp:%d %b %Y, %I:%M %p} ET · may be delayed"
 
 tabs = st.tabs(["01 · Live price & tomorrow forecast", "02 · Hypothetical scenario"])
 
@@ -325,9 +325,11 @@ with tabs[0]:
         current_stamp = pd.Timestamp.now(tz="America/New_York")
         if live_wti_used:
             current_stamp = pd.Timestamp(live_wti_used["timestamp_utc"]).tz_convert("America/New_York")
+            target_date = next_weekday(current_stamp)
         else:
             current_stamp = state["feature_date"]
-        target_date = next_weekday(current_stamp)
+            # Do not show a forecast date in the past when the intraday source is unavailable.
+            target_date = next_weekday(pd.Timestamp.now(tz="America/New_York"))
 
         st.subheader("Crude oil market right now")
         q1, q2, q3 = st.columns(3, gap="medium")
@@ -364,9 +366,18 @@ with tabs[0]:
             f"Model: {one_day['model_type']} · "
             f"Chronological holdout MAE: {one_day['test_mae'] * 100:.2f} percentage points."
         )
+        relative_edge = (
+            (float(one_day["zero_mae"]) - float(one_day["test_mae"])) /
+            max(float(one_day["zero_mae"]), 1e-9)
+        )
         if not one_day["beats_zero"]:
             st.markdown(
                 '<div class="stale-note">This model is experimental and has not beaten the unchanged-price benchmark in the latest chronological test. Treat tomorrow’s value as a research estimate, not a guaranteed forecast.</div>',
+                unsafe_allow_html=True
+            )
+        elif relative_edge < 0.01:
+            st.markdown(
+                '<div class="info-note">The model only marginally beat the unchanged-price benchmark on the latest holdout (less than 1% relative MAE improvement). This is not strong evidence of predictive skill yet.</div>',
                 unsafe_allow_html=True
             )
 
