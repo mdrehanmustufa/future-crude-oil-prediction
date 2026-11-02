@@ -25,6 +25,14 @@ STATUS = ROOT / "data_refresh_status.json"
 for path in [APP, DATA, MODEL, STATUS]:
     assert path.exists(), f"Required file missing: {path.name}"
 
+FORECAST = ROOT / "daily_forecast.json"
+assert FORECAST.exists(), "Daily inference output missing."
+with open(FORECAST, encoding="utf-8") as handle:
+    forecast_status = json.load(handle)
+assert forecast_status.get("model_retrained_this_run") is False
+assert forecast_status.get("forecast_target") == "WTI next-session closing price"
+assert np.isfinite(float(forecast_status["wti_next_session_estimate_usd_bbl"]))
+
 # Daily update must reuse the frozen estimator and must not train or overwrite it.
 daily_script = (ROOT / "scripts" / "daily_update_and_predict.py").read_text(encoding="utf-8")
 assert "train_hybrid_horizons" not in daily_script
