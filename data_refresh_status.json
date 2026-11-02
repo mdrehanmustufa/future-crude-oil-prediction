@@ -1,5 +1,5 @@
 {
-  "last_successful_run_utc": "2026-11-02T20:46:12.792208+00:00",
+  "last_successful_run_utc": "2026-11-02T20:50:16.567245+00:00",
   "historical_source": "Final_Dataset_AI_dxy_fixed.csv",
   "dataset_rows": 3021,
   "latest_market_date": "2026-10-30",
@@ -13,47 +13,47 @@
   "inventory_source_status": "No EIA_API_KEY configured; using latest stored inventory.",
   "rig_count_status": "US oil-specific rig count is carried forward from the dataset; not a live daily series.",
   "eia_api_configured": false,
-  "feature_count": 53,
+  "feature_count": 64,
   "model_metrics": {
     "1": {
       "model_type": "Zero-return baseline",
-      "holdout_mae_pp": 2.0967096808691434,
-      "zero_return_mae_pp": 2.0967096808691434,
+      "holdout_mae_pp": 1.882693741601698,
+      "zero_return_mae_pp": 1.882693741601698,
       "beats_zero_baseline": false,
-      "training_rows": 2491,
-      "holdout_rows": 440
+      "training_rows": 2388,
+      "holdout_rows": 422
     },
     "4": {
       "model_type": "Zero-return baseline",
-      "holdout_mae_pp": 4.371015404069316,
-      "zero_return_mae_pp": 4.371015404069316,
+      "holdout_mae_pp": 3.7301623223516893,
+      "zero_return_mae_pp": 3.7301623223516893,
       "beats_zero_baseline": false,
-      "training_rows": 2485,
-      "holdout_rows": 440
+      "training_rows": 2382,
+      "holdout_rows": 422
     },
     "5": {
       "model_type": "ExtraTrees experimental",
-      "holdout_mae_pp": 4.954362407669901,
-      "zero_return_mae_pp": 4.9182996360581175,
+      "holdout_mae_pp": 4.207725954366708,
+      "zero_return_mae_pp": 4.20001782571875,
       "beats_zero_baseline": false,
-      "training_rows": 2483,
-      "holdout_rows": 440
+      "training_rows": 2380,
+      "holdout_rows": 422
     },
     "10": {
       "model_type": "ExtraTrees experimental",
-      "holdout_mae_pp": 7.015117929850214,
-      "zero_return_mae_pp": 6.873494851565839,
+      "holdout_mae_pp": 5.488031100622695,
+      "zero_return_mae_pp": 5.386564311163402,
       "beats_zero_baseline": false,
-      "training_rows": 2474,
-      "holdout_rows": 439
+      "training_rows": 2375,
+      "holdout_rows": 422
     },
     "20": {
       "model_type": "ExtraTrees experimental",
-      "holdout_mae_pp": 9.271734317837787,
-      "zero_return_mae_pp": 9.20338342965378,
+      "holdout_mae_pp": 7.555874104514635,
+      "zero_return_mae_pp": 7.438371796524327,
       "beats_zero_baseline": false,
-      "training_rows": 2456,
-      "holdout_rows": 437
+      "training_rows": 2365,
+      "holdout_rows": 422
     }
   }
 }
