@@ -25,19 +25,37 @@ STATUS = ROOT / "data_refresh_status.json"
 for path in [APP, DATA, MODEL, STATUS]:
     assert path.exists(), f"Required file missing: {path.name}"
 
+FORECAST = ROOT / "daily_forecast.json"
+assert FORECAST.exists(), "Daily inference output missing."
+with open(FORECAST, encoding="utf-8") as handle:
+    forecast_status = json.load(handle)
+assert forecast_status.get("model_retrained_this_run") is False
+assert forecast_status.get("forecast_target") == "WTI next-session closing price"
+assert np.isfinite(float(forecast_status["wti_next_session_estimate_usd_bbl"]))
+
+# Daily update must reuse the frozen estimator and must not train or overwrite it.
+daily_script = (ROOT / "scripts" / "daily_update_and_predict.py").read_text(encoding="utf-8")
+assert "train_hybrid_horizons" not in daily_script
+assert "joblib.dump" not in daily_script
+assert 'model_record["pipeline"].predict(x)' in daily_script
+
 # Validate the actual Streamlit app and user-facing controls.
 app_test = AppTest.from_file(str(APP), default_timeout=90)
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert len(app_test.tabs) == 2, f"Expected two main tabs, found {len(app_test.tabs)}"
-assert len(app_test.slider) == 11, f"Expected 11 WTI/DXY/macro sliders, found {len(app_test.slider)}"
-assert len(app_test.number_input) == 2
-assert len(app_test.selectbox) == 1
+assert len(app_test.slider) == 8, f"Expected exactly eight scenario sliders, found {len(app_test.slider)}"
+assert len(app_test.number_input) == 0
+assert len(app_test.selectbox) == 0
 
 app_test.slider[0].set_value(1.0)
 app_test.slider[1].set_value(1.0)
-app_test.number_input[0].set_value(1000)
-app_test.number_input[1].set_value(5)
+app_test.slider[2].set_value(1.0)
+app_test.slider[3].set_value(2)
+app_test.slider[4].set_value(1.0)
+app_test.slider[5].set_value(5.0)
+app_test.slider[6].set_value(5.0)
+app_test.slider[7].set_value(0.5)
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert not app_test.error, [error.value for error in app_test.error]
@@ -79,6 +97,7 @@ state = {
     "current_close": float(artifacts["current_close"]),
     "feature_names": list(artifacts["feature_names"]),
     "feature_idx": matches[-1],
+    "latest_x": fe.compute_expanded_features(df).iloc[[matches[-1]]].loc[:, artifacts["feature_names"]],
 }
 assert np.isclose(
     float(status["current_wti_close"]), state["current_close"],
@@ -99,7 +118,7 @@ scenarios = [
     ("DXY", scenario_function(state, 0.0, 1.0, 0, 0)),
     ("inventory", scenario_function(state, 0.0, 0.0, 1000, 0)),
     ("rig count", scenario_function(state, 0.0, 0.0, 0, 5)),
-    ("Brent commodity", scenario_function(state, 0.0, 0.0, 0, 0, {"brent": 1.0})),
+    ("commodity basket", scenario_function(state, 0.0, 0.0, 0, 0, {"commodity_basket": 1.0})),
     ("GPR", scenario_function(state, 0.0, 0.0, 0, 0, {"gpr": 5.0})),
     ("TPU", scenario_function(state, 0.0, 0.0, 0, 0, {"tpu": 5.0})),
     ("global production", scenario_function(state, 0.0, 0.0, 0, 0, {"world_prod": 1.0})),
@@ -113,5 +132,5 @@ for label, (features, _) in scenarios:
 
 print("PASS: Streamlit app renders two tabs and scenario controls.")
 print("PASS: Zero-change scenario matches saved baseline.")
-print("PASS: WTI, DXY, inventory, rig, Brent, GPR, TPU and global-production scenarios produce finite features.")
+print("PASS: WTI, DXY, inventory, rig, commodity basket, GPR, TPU and global-production scenarios produce finite features.")
 print("PASS: All horizon predictions remain finite.")

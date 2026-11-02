@@ -1,4 +1,4 @@
-name: Market refresh and retraining
+name: Daily market update and model training on code changes
 
 on:
   push:
@@ -6,10 +6,12 @@ on:
       - main
       - integration-test
       - dashboard-ux-refresh
+      - two-screen-live-forecast
     paths-ignore:
       - "Final_Dataset_AI_dxy_fixed.csv"
       - "model_artifacts.joblib"
       - "data_refresh_status.json"
+      - "daily_forecast.json"
       - "data_backups/**"
   schedule:
     - cron: "0 23 * * 1-5"
@@ -46,12 +48,37 @@ jobs:
 
       - name: Compile Python files
         run: |
-          python -m py_compile app.py forecast_engine.py scripts/refresh_and_train.py scripts/smoke_test_app.py
+          python -m py_compile app.py forecast_engine.py scripts/refresh_and_train.py scripts/daily_update_and_predict.py scripts/smoke_test_app.py
 
-      - name: Refresh verified market data and retrain models
+      - name: Daily market refresh and inference using the saved model (no retraining)
+        if: github.event_name == 'schedule' || (github.event_name == 'push' && github.ref_name == 'main')
+        env:
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+        run: python scripts/daily_update_and_predict.py
+
+      - name: One-time training after code changes or manual retraining
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_name != 'main')
         env:
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
         run: python scripts/refresh_and_train.py
+
+      - name: Verify daily inference reuses the frozen model (test branches only)
+        if: github.event_name == 'push' && github.ref_name != 'main'
+        env:
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+        run: |
+          sha256sum model_artifacts.joblib > /tmp/model-before.sha
+          python scripts/daily_update_and_predict.py
+          sha256sum model_artifacts.joblib > /tmp/model-after.sha
+          diff -u /tmp/model-before.sha /tmp/model-after.sha
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          forecast = json.loads(Path("daily_forecast.json").read_text())
+          assert forecast["model_retrained_this_run"] is False
+          assert forecast["forecast_target"] == "WTI next-session closing price"
+          print("PASS: daily inference wrote forecast without modifying the saved model.")
+          PY
 
       - name: Run dashboard and scenario smoke tests
         run: python scripts/smoke_test_app.py
@@ -60,7 +87,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Final_Dataset_AI_dxy_fixed.csv model_artifacts.joblib data_refresh_status.json data_backups/
+          git add Final_Dataset_AI_dxy_fixed.csv data_refresh_status.json data_backups/
+          if [ -f daily_forecast.json ]; then git add daily_forecast.json; fi
+          if [ "${GITHUB_EVENT_NAME}" != "schedule" ]; then git add model_artifacts.joblib; fi
           if git diff --cached --quiet; then
             echo "No generated files changed."
           else

@@ -8,7 +8,7 @@ import re
 import shutil
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import joblib
@@ -64,6 +64,13 @@ def atomic_json(path: Path, payload: dict) -> None:
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def next_weekday(date_value: datetime) -> datetime:
+    result = datetime.fromisoformat(str(date_value)[:10]) + timedelta(days=1)
+    while result.weekday() >= 5:
+        result += timedelta(days=1)
+    return result
 
 
 def main() -> None:
@@ -125,6 +132,7 @@ def main() -> None:
 
     run_status = {
         "last_successful_run_utc": now.isoformat(),
+        "last_model_training_utc": now.isoformat(),
         "historical_source": base_name,
         "dataset_rows": int(len(state["df"])),
         "latest_market_date": str(state["market_date"].date()),
@@ -143,6 +151,25 @@ def main() -> None:
         "model_metrics": metrics,
     }
     atomic_json(status_path, run_status)
+
+    next_record = state["models"][1]
+    forecast = {
+        "generated_at_utc": now.isoformat(),
+        "source_data_date": str(state["feature_date"].date()),
+        "next_session_date_estimate": str(next_weekday(state["feature_date"]).date()),
+        "forecast_target": "WTI next-session closing price",
+        "wti_reference_close_usd_bbl": float(state["current_close"]),
+        "wti_next_session_estimate_usd_bbl": float(next_record["price"]),
+        "predicted_return_pct": float(next_record["return"] * 100),
+        "model_type": str(next_record["model_type"]),
+        "holdout_mae_percentage_points": float(next_record["test_mae"] * 100),
+        "zero_change_mae_percentage_points": float(next_record["zero_mae"] * 100),
+        "beats_zero_change_baseline": bool(next_record["beats_zero"]),
+        "feature_count": int(state["feature_count"]),
+        "model_retrained_this_run": True,
+        "next_session_date_note": "Weekday estimate; exchange holidays may alter the next session.",
+    }
+    atomic_json(ROOT / "daily_forecast.json", forecast)
     print("REFRESH AND RETRAIN SUCCESS")
     print(f"Dataset rows: {len(state['df'])}")
     print(f"Latest market date: {state['market_date'].date()}")
