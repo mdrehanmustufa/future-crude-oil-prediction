@@ -25,6 +25,12 @@ STATUS = ROOT / "data_refresh_status.json"
 for path in [APP, DATA, MODEL, STATUS]:
     assert path.exists(), f"Required file missing: {path.name}"
 
+# Daily update must reuse the frozen estimator and must not train or overwrite it.
+daily_script = (ROOT / "scripts" / "daily_update_and_predict.py").read_text(encoding="utf-8")
+assert "train_hybrid_horizons" not in daily_script
+assert "joblib.dump" not in daily_script
+assert 'model_record["pipeline"].predict(x)' in daily_script
+
 # Validate the actual Streamlit app and user-facing controls.
 app_test = AppTest.from_file(str(APP), default_timeout=90)
 app_test.run(timeout=120)
