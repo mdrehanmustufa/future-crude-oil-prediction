@@ -7,6 +7,7 @@ on:
       - integration-test
       - dashboard-ux-refresh
       - next-session-forecast-validation
+      - feature/strong-prototype-scenario-impacts
     paths-ignore:
       - "Final_Dataset_AI_dxy_fixed.csv"
       - "model_artifacts.joblib"
