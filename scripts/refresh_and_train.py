@@ -99,6 +99,7 @@ def main() -> None:
             "beats_zero_baseline": bool(record["beats_zero"]),
             "training_rows": int(record["train_rows"]),
             "holdout_rows": int(record["test_rows"]),
+            "candidate_walk_forward": record.get("candidate_metrics", {}),
         }
 
     artifacts = {
