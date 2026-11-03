@@ -218,6 +218,34 @@ def prototype_stress_multiplier(
     return supply_multiplier * (1.0 + gpr_impact), supply_impact, gpr_impact
 
 
+def scenario_price_from_current_reference(
+    current_wti_reference,
+    scenario_ml_price,
+    reset_ml_price,
+    scenario_stress_multiplier,
+    reset_stress_multiplier,
+):
+    """Anchor the unchanged/reset case to the latest completed WTI market close.
+
+    ML and stress outputs are used as relative scenario adjustments from the
+    reset inputs; the displayed starting point is the observed market reference.
+    """
+    values = [
+        current_wti_reference, scenario_ml_price, reset_ml_price,
+        scenario_stress_multiplier, reset_stress_multiplier,
+    ]
+    if not all(np.isfinite(float(value)) for value in values):
+        raise ValueError("Scenario price inputs must be finite numbers.")
+    current = float(current_wti_reference)
+    scenario_ml = float(scenario_ml_price)
+    reset_ml = float(reset_ml_price)
+    scenario_stress = float(scenario_stress_multiplier)
+    reset_stress = float(reset_stress_multiplier)
+    if min(current, scenario_ml, reset_ml, scenario_stress, reset_stress) <= 0:
+        raise ValueError("Scenario price inputs and multipliers must be positive.")
+    return current * (scenario_ml / reset_ml) * (scenario_stress / reset_stress)
+
+
 def make_scenario_features(
     state, wti_price_usd, dxy_level, brent_price_usd,
     global_production_value, gpr_index
@@ -646,7 +674,8 @@ with market_tab:
     st.divider()
     st.subheader("Interactive Backtest · Actual vs Model Estimate")
     st.markdown(
-        '<div class="section-lead">This chart uses the model predictions saved from the untouched chronological holdout. '
+        '<div class="section-lead">This chart uses chronological walk-forward estimates. For the 5, 10 and 20-session '
+        'ExtraTrees models, the model is refitted every 21 forecast origins using only information available before each block. '
         'Hover over a point for the exact values, or click a point to pin its date and error below the chart.</div>',
         unsafe_allow_html=True
     )
@@ -949,67 +978,82 @@ with scenario_tab:
                     global_production, gpr_index
                 )
 
-                # Prototype-only transparent stress overlay, deliberately separate from ML.
-                # A 1% supply decline adds 0.8% to the scenario price; a 1% supply rise
-                # subtracts 0.8%. Each geopolitical tier adds another 2.5%.
+                # The reset case is anchored to the latest completed WTI market close.
+                # ML and supply/GPR changes are applied as relative adjustments from that reset case.
                 prototype_multiplier, supply_impact_pct, gpr_impact_pct = prototype_stress_multiplier(
                     global_production, global_production_reference, gpr_level
                 )
-                supply_multiplier = 1.0 + supply_impact_pct
+                reset_multiplier, _, reset_gpr_impact_pct = prototype_stress_multiplier(
+                    global_production_reference, global_production_reference, gpr_current_level
+                )
+                current_wti_reference = float(market_inputs["wti"]["value"])
 
                 horizon_results = []
                 for horizon in SCENARIO_HORIZONS:
                     horizon_model = models[horizon]["pipeline"]
                     ref_return = float(horizon_model.predict(base_x)[0])
                     whatif_return_ml = float(horizon_model.predict(scenario_x)[0])
-                    ref_price = base_close * (1.0 + ref_return)
-                    whatif_price_ml = scenario_close * (1.0 + whatif_return_ml)
-                    whatif_price = whatif_price_ml * prototype_multiplier
-                    whatif_return = whatif_price / scenario_close - 1.0
+                    reset_ml_price = base_close * (1.0 + ref_return)
+                    whatif_ml_price = scenario_close * (1.0 + whatif_return_ml)
+                    whatif_price = scenario_price_from_current_reference(
+                        current_wti_reference,
+                        whatif_ml_price,
+                        reset_ml_price,
+                        prototype_multiplier,
+                        reset_multiplier,
+                    )
+                    whatif_return = whatif_price / current_wti_reference - 1.0
                     horizon_results.append({
                         "horizon": horizon,
-                        "reference_price": ref_price,
+                        "reference_price": current_wti_reference,
                         "scenario_price": whatif_price,
-                        "ml_scenario_price": whatif_price_ml,
-                        "reference_return": ref_return,
+                        "ml_scenario_price": whatif_ml_price,
+                        "reset_ml_price": reset_ml_price,
                         "scenario_return": whatif_return,
                         "ml_scenario_return": whatif_return_ml,
                     })
 
                 selected = next(item for item in horizon_results if item["horizon"] == chosen_horizon)
                 scenario_price = selected["scenario_price"]
-                reference_price = selected["reference_price"]
+                reference_price = current_wti_reference
                 scenario_return = selected["scenario_return"]
-                reference_return = selected["reference_return"]
-                delta_price = scenario_price - reference_price
-                delta_return_pp = (scenario_return - reference_return) * 100.0
+                delta_price = scenario_price - current_wti_reference
+                delta_return_pp = scenario_return * 100.0
 
                 if (not np.isfinite(scenario_price) or scenario_price <= 0 or
                     not np.isfinite(scenario_return)):
                     raise ValueError("Model returned an invalid scenario estimate.")
 
                 st.metric(
-                    f"Illustrative WTI scenario estimate · {chosen_horizon} sessions",
+                    f"WTI scenario price · {chosen_horizon} sessions",
                     f"USD {scenario_price:,.2f}/bbl",
-                    delta=f"USD {delta_price:+,.2f} vs reset case"
+                    delta=f"USD {delta_price:+,.2f} vs current WTI close"
+                )
+                st.caption(
+                    f"Reset reference: USD {current_wti_reference:,.2f}/bbl · "
+                    f"Latest completed WTI close: {market_inputs['wti']['date']}."
                 )
                 st.metric(
-                    f"Estimated cumulative price change · {chosen_horizon} sessions",
+                    f"Scenario change from current WTI · {chosen_horizon} sessions",
                     f"{scenario_return * 100:+.3f}%",
                     delta=f"{delta_return_pp:+.3f} percentage points vs reset case"
                 )
                 st.caption(
-                    "Prototype output = existing ML scenario estimate + transparent stress overlay. "
-                    "It is illustrative, not a validated ML forecast or guaranteed market move."
+                    "The reset value is the latest completed WTI market close; changed inputs show a relative scenario adjustment from that price."
+                )
+                relative_gpr_impact_pct = (
+                    (1.0 + gpr_impact_pct) / (1.0 + reset_gpr_impact_pct) - 1.0
+                )
+                relative_combined_impact_pct = (
+                    prototype_multiplier / reset_multiplier - 1.0
                 )
                 impact_cols = st.columns(3)
-                impact_cols[0].metric("Supply stress impact", f"{supply_impact_pct * 100:+.1f}%")
-                impact_cols[1].metric("Geopolitical premium", f"{gpr_impact_pct * 100:+.1f}%")
-                impact_cols[2].metric("Combined overlay", f"{(prototype_multiplier - 1.0) * 100:+.1f}%")
+                impact_cols[0].metric("Supply change vs reset", f"{supply_impact_pct * 100:+.1f}%")
+                impact_cols[1].metric("Geopolitical change vs reset", f"{relative_gpr_impact_pct * 100:+.1f}%")
+                impact_cols[2].metric("Combined change vs reset", f"{relative_combined_impact_pct * 100:+.1f}%")
                 st.caption(
-                    f"ML-only scenario: USD {selected['ml_scenario_price']:,.2f}/bbl · "
-                    f"Prototype stress result: USD {scenario_price:,.2f}/bbl · "
-                    f"Reset reference: USD {reference_price:,.2f}/bbl."
+                    f"Model-adjusted scenario component: USD {selected['ml_scenario_price']:,.2f}/bbl · "
+                    f"Current WTI market reference: USD {reference_price:,.2f}/bbl."
                 )
 
                 # Test all six GPR levels against the same selected market assumptions.
@@ -1030,14 +1074,22 @@ with scenario_tab:
                     level_multiplier, _, _ = prototype_stress_multiplier(
                         global_production, global_production_reference, level
                     )
-                    level_price = level_price_ml * level_multiplier
+                    level_price = scenario_price_from_current_reference(
+                        current_wti_reference,
+                        level_price_ml,
+                        selected["reset_ml_price"],
+                        level_multiplier,
+                        reset_multiplier,
+                    )
                     gpr_sensitivity_rows.append({
                         "Level": level,
                         "Scenario": gpr_ladder[level]["label"],
                         "Mapped GPR index": level_gpr,
                         "ML-only estimate": level_price_ml,
                         "Illustrative WTI close": level_price,
-                        "Prototype GPR premium (%)": 2.5 * level,
+                        "GPR premium vs reset (%)": (
+                            ((1.0 + 0.025 * level) / (1.0 + reset_gpr_impact_pct) - 1.0) * 100.0
+                        ),
                     })
                 gpr_sensitivity_df = pd.DataFrame(gpr_sensitivity_rows)
                 level_zero_price = float(gpr_sensitivity_df.loc[gpr_sensitivity_df["Level"].eq(0), "Illustrative WTI close"].iloc[0])
@@ -1048,22 +1100,22 @@ with scenario_tab:
                     gpr_sensitivity_df["Change vs level 0 (USD)"] / level_zero_price * 100.0
                     if level_zero_price else 0.0
                 )
-                st.markdown("**Prototype GPR stress test · all other inputs held constant**")
+                st.markdown("**Geopolitical sensitivity · reset-anchored WTI price**")
                 st.dataframe(
                     gpr_sensitivity_df.style.format({
                         "Mapped GPR index": "{:,.2f}",
                         "ML-only estimate": "USD {:,.2f}",
                         "Illustrative WTI close": "USD {:,.2f}",
-                        "Prototype GPR premium (%)": "{:.1f}%",
+                        "GPR premium vs reset (%)": "{:+.2f}%",
                         "Change vs level 0 (USD)": "{:+,.2f}",
                         "Change vs level 0 (%)": "{:+.3f}%",
                     }),
                     width="stretch", hide_index=True
                 )
                 max_gpr_impact_pct = float(gpr_sensitivity_df["Change vs level 0 (%)"].abs().max())
-                st.info(
-                    "Prototype sensitivity is intentionally amplified for demonstration: the table includes the ML-only "
-                    "estimate and the separate illustrative GPR premium. Do not describe the overlay as a trained model effect."
+                st.caption(
+                    "At reset, the displayed WTI scenario price equals the latest completed market close. "
+                    "Changes show the relative effect of the selected inputs from that market reference."
                 )
 
                 graph_horizons = [item["horizon"] for item in horizon_results]
