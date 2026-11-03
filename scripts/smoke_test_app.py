@@ -17,6 +17,23 @@ sys.path.insert(0, str(ROOT))
 
 import forecast_engine as fe
 
+# Validate next-session selection with both signal and no-signal synthetic series.
+synthetic_dates = pd.Series(pd.bdate_range("2020-01-01", periods=500))
+synthetic_target_dates = synthetic_dates.shift(-1)
+synthetic_x = pd.DataFrame({"signal": np.linspace(-1.0, 1.0, 500)})
+synthetic_y = 0.015 * synthetic_x["signal"].to_numpy()
+selected, candidate_scores, fold_scores, zero_score, _ = fe._evaluate_next_session_candidates(
+    synthetic_x, synthetic_y, synthetic_dates, synthetic_target_dates
+)
+assert len(fold_scores) == 4
+assert np.isfinite(zero_score) and zero_score > 0
+assert all(np.isfinite(item["pooled_mae"]) for item in candidate_scores.values())
+flat_selected, _, flat_folds, flat_zero, _ = fe._evaluate_next_session_candidates(
+    synthetic_x, np.zeros(500), synthetic_dates, synthetic_target_dates
+)
+assert flat_selected == "Zero-return baseline"
+assert len(flat_folds) == 4 and flat_zero == 0.0
+
 APP = ROOT / "app.py"
 DATA = ROOT / "Final_Dataset_AI_dxy_fixed.csv"
 MODEL = ROOT / "model_artifacts.joblib"
@@ -111,6 +128,7 @@ for label, (features, _) in scenarios:
         prediction = float(record["pipeline"].predict(features)[0])
         assert np.isfinite(prediction), f"{label} prediction invalid."
 
+print("PASS: Next-session walk-forward selector handles signal and no-signal test data.")
 print("PASS: Streamlit app renders two tabs and scenario controls.")
 print("PASS: Zero-change scenario matches saved baseline.")
 print("PASS: WTI, DXY, inventory, rig, Brent, GPR, TPU and global-production scenarios produce finite features.")

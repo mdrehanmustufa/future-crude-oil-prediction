@@ -23,6 +23,9 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.ensemble import ExtraTreesRegressor
+from sklearn.dummy import DummyRegressor
+from sklearn.linear_model import Ridge
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_absolute_error
 
 HORIZONS = [1, 4, 5, 10, 20]
@@ -507,6 +510,89 @@ def _trees_model(horizon: int):
     ])
 
 
+def _evaluate_next_session_candidates(X, y, dates, target_dates):
+    """Compare next-session candidates on four expanding, strictly chronological folds.
+
+    A candidate is deployable only when pooled MAE is at least 2% below the
+    zero-return benchmark and it beats that benchmark in at least 3 of 4 folds.
+    Otherwise the neutral zero-return baseline remains the production choice.
+    """
+    n = len(y)
+    edges = np.linspace(int(n * 0.60), n, 5, dtype=int)
+    factories = {
+        "Historical-mean return": lambda: DummyRegressor(strategy="mean"),
+        "Historical-median return": lambda: DummyRegressor(strategy="median"),
+        "Ridge regression": lambda: Pipeline([
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scale", StandardScaler()),
+            ("model", Ridge(alpha=25.0)),
+        ]),
+        "ExtraTrees shallow": lambda: Pipeline([
+            ("imputer", SimpleImputer(strategy="median")),
+            ("model", ExtraTreesRegressor(
+                n_estimators=300, max_depth=4, min_samples_leaf=20,
+                max_features=0.7, random_state=42, n_jobs=-1
+            )),
+        ]),
+    }
+    zero_errors = []
+    candidate_errors = {name: [] for name in factories}
+    fold_wins = {name: 0 for name in factories}
+    fold_scores = []
+    for fold in range(4):
+        start_pos, end_pos = int(edges[fold]), int(edges[fold + 1])
+        if end_pos <= start_pos:
+            continue
+        test_start = pd.Timestamp(dates.iloc[start_pos])
+        test_end = pd.Timestamp(dates.iloc[end_pos - 1])
+        train_idx = np.flatnonzero(
+            (dates < test_start).to_numpy() &
+            (target_dates < test_start).to_numpy()
+        )
+        test_idx = np.flatnonzero(
+            (dates >= test_start).to_numpy() &
+            (dates <= test_end).to_numpy()
+        )
+        if len(train_idx) < 200 or len(test_idx) < 20:
+            continue
+        y_test = y[test_idx]
+        zero_mae = float(mean_absolute_error(y_test, np.zeros_like(y_test)))
+        zero_errors.extend(np.abs(y_test).tolist())
+        row = {"fold": fold + 1, "test_start": test_start.date().isoformat(),
+               "test_end": test_end.date().isoformat(), "zero_mae": zero_mae}
+        for name, factory in factories.items():
+            candidate = factory()
+            candidate.fit(X.iloc[train_idx], y[train_idx])
+            pred = np.asarray(candidate.predict(X.iloc[test_idx]), dtype=float)
+            pred = np.clip(pred, np.quantile(y[train_idx], 0.01),
+                           np.quantile(y[train_idx], 0.99))
+            score = float(mean_absolute_error(y_test, pred))
+            candidate_errors[name].extend(np.abs(y_test - pred).tolist())
+            if score < zero_mae:
+                fold_wins[name] += 1
+            row[name] = score
+        fold_scores.append(row)
+
+    if len(fold_scores) < 3:
+        raise RuntimeError("Insufficient valid walk-forward folds for next-session candidate evaluation.")
+    zero_pooled = float(np.mean(zero_errors))
+    summaries = {}
+    eligible = []
+    for name in factories:
+        pooled = float(np.mean(candidate_errors[name]))
+        summaries[name] = {
+            "pooled_mae": pooled,
+            "folds_beating_zero": int(fold_wins[name]),
+            "folds": len(fold_scores),
+            "improvement_vs_zero_pct": float((zero_pooled - pooled) / zero_pooled * 100)
+                if zero_pooled > 0 else 0.0,
+        }
+        if pooled <= zero_pooled * 0.98 and fold_wins[name] >= min(3, len(fold_scores)):
+            eligible.append((pooled, name))
+    selected = min(eligible)[1] if eligible else "Zero-return baseline"
+    return selected, summaries, fold_scores, zero_pooled, factories
+
+
 def train_hybrid_horizons(df: pd.DataFrame):
     """Train each deployed model and calculate a chronological holdout diagnostic.
 
@@ -559,25 +645,58 @@ def train_hybrid_horizons(df: pd.DataFrame):
         y_test = y_all[test_local]
         zero_mae = float(mean_absolute_error(y_test, np.zeros_like(y_test)))
         residuals = y_test.copy()
-        if h in (1, 4):
-            holdout_model = ZeroReturnBaseline().fit(X_all.iloc[train_local], y_all[train_local])
+        candidate_metrics = {}
+        if h == 1:
+            X_selection = X_all.iloc[train_local].reset_index(drop=True)
+            y_selection = y_all[train_local]
+            dates_selection = dates.iloc[train_local].reset_index(drop=True)
+            target_selection = target_dates.iloc[train_local].reset_index(drop=True)
+            selected, candidate_metrics, walk_forward_scores, selection_zero_mae, factories = (
+                _evaluate_next_session_candidates(
+                    X_selection, y_selection, dates_selection, target_selection
+                )
+            )
+            if selected == "Zero-return baseline":
+                holdout_model = ZeroReturnBaseline().fit(X_all.iloc[train_local], y_all[train_local])
+                model_type = "Zero-return baseline (walk-forward selected)"
+                params = "Retained because no candidate cleared the validation threshold"
+                test_pred = holdout_model.predict(X_all.iloc[test_local])
+                predicted_return = 0.0
+                final_model = ZeroReturnBaseline().fit(X_all, y_all)
+            else:
+                holdout_model = factories[selected]()
+                holdout_model.fit(X_all.iloc[train_local], y_all[train_local])
+                test_pred = np.asarray(holdout_model.predict(X_all.iloc[test_local]), dtype=float)
+                test_pred = np.clip(
+                    test_pred, np.quantile(y_all[train_local], 0.01),
+                    np.quantile(y_all[train_local], 0.99)
+                )
+                model_type = selected + " (walk-forward selected)"
+                params = "Selected on expanding folds inside training period; final holdout untouched"
+                final_model = factories[selected]()
+                final_model.fit(X_all, y_all)
+                predicted_return = float(final_model.predict(latest_x)[0])
+                predicted_return = float(np.clip(
+                    predicted_return, np.quantile(y_all, 0.01), np.quantile(y_all, 0.99)
+                ))
+            test_mae = float(mean_absolute_error(y_test, test_pred))
+            residuals = y_test - test_pred
+        elif h == 4:
+            final_model = ZeroReturnBaseline().fit(X_all, y_all)
             model_type = "Zero-return baseline"
             params = "Cumulative return = 0"
-            test_pred = holdout_model.predict(X_all.iloc[test_local])
+            test_pred = np.zeros_like(y_test)
+            test_mae = float(mean_absolute_error(y_test, test_pred))
+            predicted_return = 0.0
+            residuals = y_test - test_pred
         else:
             holdout_model = _trees_model(h)
             holdout_model.fit(X_all.iloc[train_local], y_all[train_local])
             model_type = "ExtraTrees experimental"
             params = f"depth={6 if h == 5 else 3}, min_leaf={10 if h == 5 else 30}, trees=100"
             test_pred = holdout_model.predict(X_all.iloc[test_local])
-        test_mae = float(mean_absolute_error(y_test, test_pred))
-        residuals = y_test - test_pred
-
-        # Refit final inference model only after measuring the chronological holdout.
-        if h in (1, 4):
-            final_model = ZeroReturnBaseline().fit(X_all, y_all)
-            predicted_return = 0.0
-        else:
+            test_mae = float(mean_absolute_error(y_test, test_pred))
+            residuals = y_test - test_pred
             final_model = _trees_model(h)
             final_model.fit(X_all, y_all)
             predicted_return = float(final_model.predict(latest_x)[0])
@@ -606,6 +725,7 @@ def train_hybrid_horizons(df: pd.DataFrame):
             "low_price": low_price,
             "high_price": high_price,
             "active_features": [],
+            "candidate_metrics": candidate_metrics,
             "target_cutoff": feature_date,
         }
         diagnostics.append({
