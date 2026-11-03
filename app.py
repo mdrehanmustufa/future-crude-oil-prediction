@@ -1040,9 +1040,9 @@ with scenario_tab:
                         "Prototype GPR premium (%)": 2.5 * level,
                     })
                 gpr_sensitivity_df = pd.DataFrame(gpr_sensitivity_rows)
-                level_zero_price = float(gpr_sensitivity_df.loc[gpr_sensitivity_df["Level"].eq(0), "Estimated WTI close"].iloc[0])
+                level_zero_price = float(gpr_sensitivity_df.loc[gpr_sensitivity_df["Level"].eq(0), "Illustrative WTI close"].iloc[0])
                 gpr_sensitivity_df["Change vs level 0 (USD)"] = (
-                    gpr_sensitivity_df["Estimated WTI close"] - level_zero_price
+                    gpr_sensitivity_df["Illustrative WTI close"] - level_zero_price
                 )
                 gpr_sensitivity_df["Change vs level 0 (%)"] = (
                     gpr_sensitivity_df["Change vs level 0 (USD)"] / level_zero_price * 100.0
@@ -1060,7 +1060,6 @@ with scenario_tab:
                     }),
                     width="stretch", hide_index=True
                 )
-                distinct_gpr_outputs = gpr_sensitivity_df["Estimated WTI close"].round(4).nunique()
                 max_gpr_impact_pct = float(gpr_sensitivity_df["Change vs level 0 (%)"].abs().max())
                 st.info(
                     "Prototype sensitivity is intentionally amplified for demonstration: the table includes the ML-only "
