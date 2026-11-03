@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
+import yfinance as yf
 
 from forecast_engine import (
     HORIZONS, EXPANDED_FEATURES, standardize,
@@ -167,6 +168,141 @@ def make_scenario_features(
 ):
     """Create a temporary 64-feature row from absolute scenario levels."""
     df = state["df"]
+    idx = state["feature_idx"]
+    feature_names = state["feature_names"]
+    scenario_df = df.copy()
+
+    values = {
+        "WTI price": wti_price_usd,
+        "DXY level": dxy_level,
+        "US commercial crude stocks (million barrels)": inventory_mmbbl,
+        "US oil rig count": oil_rig_count,
+        "Brent price": brent_price_usd,
+        "Geopolitical Risk Index": gpr_index,
+    }
+    if any(not np.isfinite(float(value)) or float(value) <= 0 for value in values.values()):
+        raise ValueError("All scenario reference levels must be positive finite numbers.")
+
+    old_wti = float(scenario_df.at[idx, "WTI_Close"])
+    if old_wti <= 0:
+        raise ValueError("Saved WTI reference price is invalid.")
+    wti_factor = float(wti_price_usd) / old_wti
+    for column in ["WTI_Open", "WTI_High", "WTI_Low", "WTI_Close"]:
+        value = pd.to_numeric(pd.Series([scenario_df.at[idx, column]]), errors="coerce").iloc[0]
+        if pd.notna(value):
+            scenario_df.at[idx, column] = float(value) * wti_factor
+
+    old_dxy = pd.to_numeric(pd.Series([scenario_df.at[idx, "DXY_Close"]]), errors="coerce").iloc[0]
+    if pd.isna(old_dxy) or old_dxy <= 0:
+        raise ValueError("DXY value is missing or invalid on the model reference date.")
+    scenario_df.at[idx, "DXY_Close"] = float(dxy_level)
+    scenario_df["DXY_ret_1d"] = pd.to_numeric(
+        scenario_df["DXY_Close"], errors="coerce"
+    ).pct_change(fill_method=None)
+
+    scenario_df.at[idx, "INV_US_Crude_Stocks_kbbl"] = float(inventory_mmbbl) * 1000.0
+    scenario_df.at[idx, "RIG_US_Oil_Rigs"] = float(oil_rig_count)
+
+    brent_column = "CMD_brent_lag1"
+    old_brent = pd.to_numeric(pd.Series([scenario_df.at[idx, brent_column]]), errors="coerce").iloc[0]
+    if pd.isna(old_brent) or old_brent <= 0:
+        raise ValueError("Stored lagged Brent input is missing or invalid.")
+    scenario_df.at[idx, brent_column] = float(brent_price_usd)
+
+    gpr_columns = ["GPR_total_lag1m", "GPR_threats_lag1m", "GPR_acts_lag1m"]
+    old_gpr = pd.to_numeric(pd.Series([scenario_df.at[idx, gpr_columns[0]]]), errors="coerce").iloc[0]
+    if pd.isna(old_gpr) or old_gpr <= 0:
+        raise ValueError("Stored GPR baseline is missing or invalid.")
+    gpr_factor = float(gpr_index) / float(old_gpr)
+    for column in gpr_columns:
+        base_value = pd.to_numeric(pd.Series([scenario_df.at[idx, column]]), errors="coerce").iloc[0]
+        if pd.isna(base_value) or base_value < 0:
+            raise ValueError(f"{column} is missing or invalid for this scenario.")
+        scenario_df.at[idx, column] = float(base_value) * gpr_factor
+
+    recipes, _ = infer_recipes(df)
+    candidates = feature_candidates(scenario_df)
+    core_features = [
+        "WTI_ret_1d", "WTI_ret_lag1", "WTI_ret_lag2",
+        "WTI_ret_lag4", "WTI_ret_5d_mean", "WTI_vol_20d", "WTI_range_pct"
+    ]
+    unmatched = []
+    for feature in core_features:
+        recipe = recipes.get(feature)
+        if recipe is None or recipe not in candidates.get(feature, {}):
+            unmatched.append(feature)
+        else:
+            scenario_df[feature] = candidates[feature][recipe]
+    if unmatched:
+        raise ValueError("Could not reproduce historical feature formulas: " + ", ".join(unmatched))
+
+    scenario_matrix = compute_expanded_features(scenario_df)
+    scenario_x = scenario_matrix.loc[[idx], feature_names]
+    if scenario_x.shape != (1, len(feature_names)):
+        raise ValueError("Scenario feature matrix has an unexpected shape.")
+    if not np.isfinite(scenario_x.to_numpy(dtype=float)).all():
+        raise ValueError("Scenario produced incomplete/non-finite model features.")
+    return scenario_x, float(scenario_df.at[idx, "WTI_Close"])
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def latest_yahoo_daily_close(symbol):
+    """Return the latest completed daily close for a market reference."""
+    try:
+        history = yf.Ticker(symbol).history(period="10d", interval="1d", auto_adjust=False)
+        if history is None or history.empty or "Close" not in history:
+            return None, None, "Yahoo Finance quote unavailable"
+        closes = history["Close"].dropna()
+        if closes.empty:
+            return None, None, "Yahoo Finance quote unavailable"
+        timestamp = pd.Timestamp(closes.index[-1])
+        return float(closes.iloc[-1]), timestamp.strftime("%d %b %Y"), "Yahoo Finance daily close"
+    except Exception as exc:
+        return None, None, f"Saved dataset fallback · {type(exc).__name__}"
+
+
+def resolve_market_reference(symbol, fallback_value, fallback_date):
+    value, quote_date, source = latest_yahoo_daily_close(symbol)
+    if value is not None and np.isfinite(value) and value > 0:
+        return {"value": float(value), "date": quote_date, "source": source}
+    return {
+        "value": float(fallback_value),
+        "date": str(fallback_date),
+        "source": "Latest saved dataset value · quote fallback"
+    }
+
+
+def reset_scenario_to_latest(defaults):
+    """Restore each scenario widget to the latest published reference value."""
+    for key, value in defaults.items():
+        st.session_state[key] = value
+
+
+SCENARIO_HORIZONS = [5, 10, 20]
+
+
+def price_card(label, value, date_label, description, tag):
+    safe_value = value if value is not None else "Not available"
+    st.markdown(
+        f"""<div class="price-card">
+        <div class="label">{label}</div>
+        <div class="value">{safe_value}</div>
+        <div class="meta">{date_label}</div>
+        <div class="meta">{description}</div>
+        <div class="tag">{tag}</div>
+        </div>""",
+        unsafe_allow_html=True
+    )
+
+
+try:
+    state = load_saved_state()
+except Exception as exc:
+    st.error(f"Saved forecast files could not be loaded: {type(exc).__name__}: {exc}")
+    st.info("The refresh workflow must first create the CSV, model_artifacts.joblib and data_refresh_status.json.")
+    st.stop()
+
+df = state["df"]
 models = state["models"]
 status = state["status"]
 feature_date = state["feature_date"]
@@ -191,14 +327,12 @@ market_inputs = {
     ),
 }
 
-# Latest published reference observations checked on 4 Nov 2026.
-# EIA commercial crude stocks exclude the Strategic Petroleum Reserve.
 LATEST_PUBLIC_SCENARIO_INPUTS = {
-    "inventory_mmbbl": 410.6,   # EIA, week ending 23 Oct 2026; released 28 Oct
+    "inventory_mmbbl": 410.6,
     "inventory_as_of": "Week ending 23 Oct 2026",
-    "oil_rigs": 462,            # Baker Hughes US oil-directed rigs, 30 Oct 2026
+    "oil_rigs": 462,
     "rigs_as_of": "30 Oct 2026",
-    "gpr_index": 150.52,        # Caldara-Iacoviello GPR monthly reading for Oct 2026
+    "gpr_index": 150.52,
     "gpr_as_of": "Oct 2026 monthly reading",
 }
 
@@ -255,7 +389,7 @@ with st.expander("What do the oil benchmarks mean?"):
     st.caption(
         "Urals, ESPO, European natural gas (TTF), wheat, urea, TPU and global-production indicators "
         "remain among the model's 64 trained features. They are held at their latest stored values "
-        "in this simplified live scenario panel; they have not been removed from the model."
+        "in this simplified scenario panel; they have not been removed from the model."
     )
 
 if market_date > feature_date:
@@ -637,7 +771,7 @@ with st.expander("Data freshness, sources and model diagnostics"):
     )
 
 st.caption(
-    "Data quality note: displayed benchmark values are saved daily futures closes, not guaranteed live quotes. "
-    "WTI forecast calculations use only the saved WTI feature row. Brent is a benchmark comparison until "
-    "a separately trained and validated Brent model exists."
+    "Data quality note: market cards use the latest completed daily close when available, or clearly labeled saved-data fallback. "
+    "Scenario inputs are absolute levels for WTI, Brent, DXY, US commercial crude stocks, US oil rigs and GPR. "
+    "All other saved trained features remain in the 64-feature model row."
 )
