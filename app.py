@@ -533,136 +533,254 @@ SCENARIO_HORIZONS = [5, 10, 20]
 scenario_tab, market_tab = st.tabs(["01 · Scenario Lab", "02 · Forecast & Backtest"])
 
 with market_tab:
-    st.subheader("Next trading session · WTI reference estimate")
-    next_record = models[1]
-    next_price = float(next_record["price"])
-    next_return = float(next_record["return"]) * 100
-    a, b, c = st.columns([1.25, 1, 1], gap="medium")
-    with a:
-        st.metric("Estimated WTI close reference", f"USD {next_price:,.2f}/bbl",
-                  f"{next_return:+.3f}% vs reference close")
-    with b:
-        st.metric("Reference close", f"USD {current_close:,.2f}/bbl")
-    with c:
-        st.metric("Model reference date", str(feature_date.date()))
+    st.subheader("Forecast & Backtest")
+    st.caption("Market status, scheduled refresh, forecast horizons and an interactive out-of-sample comparison.")
 
-    st.markdown(
-        """<div class="callout-warn">
-        <strong>Important:</strong> This is not a forecast of tomorrow's opening price.
-        The dataset target is the future <em>closing</em> price. For the next session,
-        the current model uses a zero-return benchmark, so the estimate stays equal to
-        the last complete reference close. It is a neutral baseline, not a directional signal.
-        </div>""",
-        unsafe_allow_html=True
-    )
+    # Four compact status cards matching the reference screenshot.
+    wti_quote = market_inputs["wti"]
+    wti_delta = None
+    if wti_quote.get("previous_close") is not None:
+        wti_delta_value = float(wti_quote["value"]) - float(wti_quote["previous_close"])
+        wti_delta_pct = (
+            wti_delta_value / float(wti_quote["previous_close"]) * 100.0
+            if float(wti_quote["previous_close"]) != 0 else 0.0
+        )
+        wti_delta = f"{wti_delta_value:+.2f} ({wti_delta_pct:+.2f}%)"
 
-    st.subheader("WTI outlook by forecast horizon")
-    st.markdown(
-        '<div class="section-lead">Each row answers: “What reference close does the current model produce '
-        'after this many observed trading sessions?” It does not mean calendar days.</div>',
-        unsafe_allow_html=True
-    )
+    status_cols = st.columns(4, gap="medium")
+    with status_cols[0]:
+        st.metric("Current WTI Price", f"${wti_quote['value']:,.2f}", wti_delta)
+        st.caption(f"As of {wti_quote['date']} · USD/barrel")
+    with status_cols[1]:
+        source_label = "Yahoo Finance" if "Yahoo Finance" in wti_quote["source"] else "Saved dataset"
+        st.metric("Data Source", source_label)
+        st.caption(f"{wti_quote['source']} · CL=F daily close")
+    with status_cols[2]:
+        st.metric("Model Status", "Trained & loaded")
+        active_ml = [h for h in (5, 10, 20) if models[h]["beats_zero"]]
+        st.caption(
+            "All model artifacts loaded · "
+            f"{len(active_ml)}/3 ML horizons beat the zero-change holdout benchmark"
+        )
+    with status_cols[3]:
+        next_refresh = next_scheduled_refresh_ist()
+        now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
+        seconds_left = max(0, int((next_refresh - now_ist).total_seconds()))
+        hours_left, rem = divmod(seconds_left, 3600)
+        minutes_left = rem // 60
+        st.metric("Next Update", "Automatic")
+        st.caption(
+            f"{next_refresh.strftime('%d %b · %I:%M %p')} IST · "
+            f"in {hours_left}h {minutes_left:02d}m"
+        )
+
+    weak_horizons = [str(h) for h in HORIZONS if not models[h]["beats_zero"]]
+    if weak_horizons:
+        st.warning(
+            "Research status: current chronological holdout MAE is not better than the zero-return benchmark "
+            f"for horizons {', '.join(weak_horizons)}. The 5/10/20-session ExtraTrees outputs remain experimental."
+        )
+
+    st.subheader("WTI forecast overview")
     rows = []
     for horizon in HORIZONS:
         record = models[horizon]
-        model_type = record["model_type"]
-        method = "Neutral / unchanged-return baseline" if "Zero" in model_type else "Experimental ExtraTrees ML"
-        result = "Baseline tie" if not record["beats_zero"] and "Zero" in model_type else (
-            "Below baseline" if not record["beats_zero"] else "Beats baseline"
-        )
+        method = "Zero-return baseline" if "Zero" in record["model_type"] else "ExtraTrees · experimental"
         rows.append({
-            "Forecast horizon": labels[horizon],
+            "Horizon": labels[horizon],
             "Method": method,
-            "Estimated WTI close (USD/bbl)": record["price"],
-            "Expected change": record["return"] * 100,
-            "Holdout error (pp)": record["test_mae"] * 100,
-            "Zero-change error (pp)": record["zero_mae"] * 100,
-            "Validation": result
+            "Estimated WTI close (USD/bbl)": float(record["price"]),
+            "Expected return (%)": float(record["return"]) * 100.0,
+            "Holdout MAE (pp)": float(record["test_mae"]) * 100.0,
+            "Zero-return MAE (pp)": float(record["zero_mae"]) * 100.0,
+            "Validation": "Beats baseline" if record["beats_zero"] else "Does not beat baseline",
         })
     forecast_df = pd.DataFrame(rows)
     st.dataframe(
         forecast_df.style.format({
-            "Estimated WTI close (USD/bbl)": "{:,.2f}",
-            "Expected change": "{:+.3f}%",
-            "Holdout error (pp)": "{:.3f}",
-            "Zero-change error (pp)": "{:.3f}"
+            "Estimated WTI close (USD/bbl)": "${:,.2f}",
+            "Expected return (%)": "{:+.3f}%",
+            "Holdout MAE (pp)": "{:.3f}",
+            "Zero-return MAE (pp)": "{:.3f}",
         }),
         width="stretch", hide_index=True
     )
     st.caption(
-        "pp = percentage points. Holdout error is measured on a later-in-time test period. "
-        "Smaller MAE is better. An indicative price range is not a calibrated confidence interval."
+        "The target is the WTI closing price after the selected number of observed trading sessions, "
+        "not the next session's opening price. MAE is error, not accuracy."
     )
-    weak_horizons = [str(h) for h in HORIZONS if not models[h]["beats_zero"]]
-    if weak_horizons:
-        st.warning(
-            "Current chronological holdout: the trained approach does not beat the simple "
-            "zero-change benchmark at horizons " + ", ".join(weak_horizons) +
-            ". Treat the experimental ML estimates as research outputs, not proven improvements."
-        )
 
-    with st.expander("What information does the model actually use?"):
-        st.write(
-            "The model has 64 numeric input features. Many are calculated automatically "
-            "from previous market observations; they are not 53 separate sliders."
-        )
-        feature_families = [
-            ("WTI price history & technical indicators", [n for n in state["feature_names"] if n.startswith("WTI_")],
-             "Past returns, momentum, volatility, distance from moving averages and drawdowns."),
-            ("US Dollar Index (DXY)", [n for n in state["feature_names"] if n.startswith("DXY_")],
-             "Daily/past returns, momentum and volatility of the six-currency US dollar index."),
-            ("Other commodity markets", [n for n in state["feature_names"] if n.startswith("CMD_")],
-             "Lagged Brent, Urals, ESPO, European natural gas (TTF), wheat and urea prices."),
-            ("Geopolitical risk (GPR)", [n for n in state["feature_names"] if n.startswith("GPR_")],
-             "Lagged total geopolitical risk, threats and acts indices."),
-            ("Trade policy uncertainty (TPU)", [n for n in state["feature_names"] if n.startswith("TPU_")],
-             "Lagged trade-policy uncertainty index."),
-            ("Global oil production", [n for n in state["feature_names"] if n.startswith("EIA_world_prod_")],
-             "Global oil production series with a three-month lag."),
-            ("US oil rig count", [n for n in state["feature_names"] if n.startswith("RIG_")],
-             "Rig-count level and changes across recent periods."),
-            ("US crude inventories", [n for n in state["feature_names"] if n.startswith("INVENTORY_") or n.startswith("INV_")],
-             "Inventory level, changes and percentage change.")
-        ]
-        for title, names, detail in feature_families:
-            st.markdown(f"**{title} — {len(names)} features**")
-            st.caption(detail)
-        st.markdown("**Not currently trained model inputs**")
-        st.write(
-            "GPR is included through three lagged historical indices, and TPU is included as a lagged "
-            "historical uncertainty index. They are not live headline/news signals. OPEC+ decisions, "
-            "war/peace headlines beyond the historical GPR series, shipping disruptions, weather, "
-            "refinery demand and interest rates are not separate trained inputs. The live BZ=F card "
-            "is a benchmark quote; the model's CMD_brent_lag1 is a separate stored lagged feature."
-        )
+    st.divider()
+    st.subheader("Interactive Backtest · Actual vs Model Estimate")
+    st.markdown(
+        '<div class="section-lead">This chart uses the model predictions saved from the untouched chronological holdout. '
+        'Hover over a point for the exact values, or click a point to pin its date and error below the chart.</div>',
+        unsafe_allow_html=True
+    )
 
-    st.subheader("Historical evaluation · actual vs previous-close benchmark")
-    history = df[["Date", "WTI_Close"]].dropna().sort_values("Date").copy()
-    history["Previous_Close_Benchmark"] = history["WTI_Close"].shift(1)
-    history_start = history["Date"].max() - pd.Timedelta(days=90)
-    history_view = history.loc[history["Date"] >= history_start].dropna(subset=["Previous_Close_Benchmark"])
-    if not history_view.empty:
-        fig, ax = plt.subplots(figsize=(13, 4.8))
-        fig.patch.set_facecolor("white")
-        ax.set_facecolor("white")
-        ax.plot(history_view["Date"], history_view["WTI_Close"], color="#23865b",
-                linewidth=2.5, label="Actual WTI close")
-        ax.plot(history_view["Date"], history_view["Previous_Close_Benchmark"], color="#c6534b",
-                linewidth=2, linestyle="--", label="Previous-close benchmark estimate")
-        ax.set_ylabel("WTI close (USD/bbl)")
-        ax.set_xlabel("Trading date")
-        ax.grid(alpha=.18, color="#9aa0a6")
-        ax.spines[["top", "right"]].set_visible(False)
-        ax.legend(frameon=False, ncol=2, loc="upper left")
-        fig.tight_layout()
-        st.pyplot(fig, clear_figure=True)
-        plt.close(fig)
-        st.caption(
-            f"Showing available observations from {history_view['Date'].min().date()} to {history_view['Date'].max().date()}. "
-            "The red dashed line is a retrospective previous-close benchmark replay, not historical predictions made by today's trained ML model."
+    horizon_options = list(HORIZONS)
+    chart_horizon = st.selectbox(
+        "Backtest horizon",
+        options=horizon_options,
+        index=2,
+        format_func=lambda h: labels[h],
+        key="backtest_horizon",
+    )
+    backtest_rows = models[chart_horizon].get("holdout_backtest", [])
+    if not backtest_rows:
+        st.info(
+            "The currently saved model artifact does not contain point-by-point holdout predictions yet. "
+            "The next scheduled training refresh will create them; this chart will then show genuine out-of-sample estimates."
         )
     else:
-        st.info("There are not enough historical observations to display the benchmark replay.")
+        backtest = pd.DataFrame(backtest_rows)
+        backtest["target_date"] = pd.to_datetime(backtest["target_date"], errors="coerce")
+        backtest["feature_date"] = pd.to_datetime(backtest["feature_date"], errors="coerce")
+        backtest = backtest.dropna(subset=["target_date", "actual_close", "estimated_close"]).sort_values("target_date")
+
+        window_sessions = st.select_slider(
+            "Visible holdout observations",
+            options=[30, 60, 90, 180, 0],
+            value=90,
+            format_func=lambda n: "Full holdout" if n == 0 else f"Last {n} sessions",
+            key="backtest_window",
+        )
+        chart_data = backtest if window_sessions == 0 else backtest.tail(window_sessions)
+        abs_error = (chart_data["estimated_close"] - chart_data["actual_close"]).abs()
+        abs_error_pct = abs_error / chart_data["actual_close"].abs().clip(lower=1e-9) * 100.0
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=chart_data["target_date"],
+            y=chart_data["actual_close"],
+            name="Actual WTI close",
+            mode="lines+markers",
+            line=dict(color="#20885a", width=2.7),
+            marker=dict(size=5),
+            customdata=chart_data[[
+                "estimated_close", "absolute_error", "absolute_error_pct", "feature_date"
+            ]].to_numpy(),
+            hovertemplate=(
+                "<b>Target date: %{x|%d %b %Y}</b><br>"
+                "Actual close: $%{y:,.2f}<br>"
+                "Model estimate: $%{customdata[0]:,.2f}<br>"
+                "Absolute error: $%{customdata[1]:,.2f}<br>"
+                "Absolute error: %{customdata[2]:.2f}%<br>"
+                "Forecast origin: %{customdata[3]|%d %b %Y}<extra></extra>"
+            )
+        ))
+        fig.add_trace(go.Scatter(
+            x=chart_data["target_date"],
+            y=chart_data["estimated_close"],
+            name="Model / benchmark estimate",
+            mode="lines+markers",
+            line=dict(color="#c6534b", width=2.4, dash="dash"),
+            marker=dict(size=5),
+            customdata=chart_data[[
+                "actual_close", "absolute_error", "absolute_error_pct", "feature_date"
+            ]].to_numpy(),
+            hovertemplate=(
+                "<b>Target date: %{x|%d %b %Y}</b><br>"
+                "Estimate: $%{y:,.2f}<br>"
+                "Actual close: $%{customdata[0]:,.2f}<br>"
+                "Absolute error: $%{customdata[1]:,.2f}<br>"
+                "Absolute error: %{customdata[2]:.2f}%<br>"
+                "Forecast origin: %{customdata[3]|%d %b %Y}<extra></extra>"
+            )
+        ))
+        fig.update_layout(
+            height=500,
+            margin=dict(l=12, r=18, t=25, b=12),
+            template="plotly_white",
+            paper_bgcolor="#ffffff",
+            plot_bgcolor="#ffffff",
+            hovermode="x unified",
+            legend=dict(orientation="h", y=1.10, x=0),
+            font=dict(color="#26323d", size=12),
+            xaxis=dict(
+                title="Actual target date",
+                type="date",
+                rangeslider=dict(visible=True, thickness=0.08),
+            ),
+            yaxis=dict(
+                title="WTI closing price (USD/bbl)",
+                gridcolor="rgba(110,125,140,.16)",
+                zeroline=False,
+            ),
+        )
+        chart_event = st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config={"displaylogo": False, "scrollZoom": True},
+            key=f"holdout_chart_{chart_horizon}",
+            on_select="rerun",
+            selection_mode=("points",),
+        )
+
+        selection_points = []
+        try:
+            selection_points = list(chart_event.selection.points)
+        except Exception:
+            try:
+                selection_points = list(chart_event.get("selection", {}).get("points", []))
+            except Exception:
+                selection_points = []
+
+        if selection_points:
+            selected_point = selection_points[-1]
+            curve_number = int(selected_point.get("curve_number", 0))
+            point_y = float(selected_point.get("y", 0.0))
+            point_x = pd.Timestamp(selected_point.get("x"))
+            custom = selected_point.get("customdata", [])
+            if curve_number == 0:
+                selected_actual = point_y
+                selected_estimate = float(custom[0])
+            else:
+                selected_estimate = point_y
+                selected_actual = float(custom[0])
+            selected_abs_error = abs(selected_estimate - selected_actual)
+            selected_error_pct = (
+                selected_abs_error / abs(selected_actual) * 100.0 if selected_actual else 0.0
+            )
+            st.info(
+                f"Selected target date: **{point_x.strftime('%d %b %Y')}** · "
+                f"Actual WTI close: **USD {selected_actual:,.2f}** · "
+                f"Estimated close: **USD {selected_estimate:,.2f}** · "
+                f"Absolute error: **USD {selected_abs_error:,.2f} ({selected_error_pct:.2f}%)**"
+            )
+
+        chart_mae = float((chart_data["estimated_close"] - chart_data["actual_close"]).abs().mean())
+        chart_zero_mae = float(chart_data["absolute_error"].mean()) if "absolute_error" in chart_data else chart_mae
+        # Baseline MAE for the same dates, derived from the saved reference close.
+        same_dates_zero_mae = float(
+            (chart_data["reference_close"] - chart_data["actual_close"]).abs().mean()
+        )
+        metric_cols = st.columns(3, gap="medium")
+        with metric_cols[0]:
+            st.metric("Selected-window MAE", f"{chart_mae:,.3f} USD/bbl")
+        with metric_cols[1]:
+            st.metric("Previous-close baseline MAE", f"{same_dates_zero_mae:,.3f} USD/bbl")
+        with metric_cols[2]:
+            st.metric("Holdout observations", f"{len(chart_data):,}")
+        st.caption(
+            f"Actual target dates: {chart_data['target_date'].min().date()} to {chart_data['target_date'].max().date()} · "
+            f"Forecast origin dates precede each target date. "
+            f"Method: {models[chart_horizon]['model_type']}."
+        )
+
+    with st.expander("Data sources, model status and limitations"):
+        st.markdown("**Market sources**")
+        st.write("WTI: Yahoo Finance CL=F; current card uses latest completed daily close or saved-data fallback.")
+        st.write("DXY: Yahoo Finance DX-Y.NYB; source overlap is checked during the refresh workflow.")
+        st.write("Brent: Yahoo Finance BZ=F; displayed as a benchmark, while the model uses a separate lagged Brent feature.")
+        st.write("US crude inventory: stored historical EIA series; no EIA_API_KEY is currently configured.")
+        st.write("US oil-rig count: historical source series carried forward, not a live daily value.")
+        st.write("GPR, TPU, commodities and global production: stored lagged dataset series; not live news feeds.")
+        st.markdown("**Model interpretation**")
+        st.write("1 and 4 sessions use zero-return baselines. 5, 10 and 20 sessions use experimental ExtraTrees models.")
+        st.write("The app reads saved model artifacts. It does not train models when a visitor opens the dashboard.")
+        st.write("The current holdout comparison is chronological and out-of-sample. Experimental ML models have not beaten the zero-return benchmark in the latest saved evaluation.")
+        st.write("This is a research dashboard, not an investment recommendation.")
 
 with scenario_tab:
     st.subheader("What-if Scenario Analysis")
