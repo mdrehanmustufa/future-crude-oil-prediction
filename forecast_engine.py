@@ -593,6 +593,56 @@ def _evaluate_next_session_candidates(X, y, dates, target_dates):
     return selected, summaries, fold_scores, zero_pooled, factories
 
 
+def _rolling_holdout_predictions(
+    X: pd.DataFrame,
+    y: np.ndarray,
+    dates: pd.Series,
+    target_dates: pd.Series,
+    test_local: np.ndarray,
+    model_factory,
+    block_size: int = 21,
+    min_train_rows: int = 100,
+) -> tuple[np.ndarray, int]:
+    """Create leakage-safe expanding-window estimates with periodic model refits.
+
+    Each block is forecast from a model fitted only on observations whose target
+    dates are strictly earlier than the first feature date in that block. The
+    returned predictions align position-for-position with test_local.
+    """
+    test_local = np.asarray(test_local, dtype=int)
+    if test_local.ndim != 1 or len(test_local) == 0:
+        raise ValueError("test_local must contain at least one row index.")
+    if block_size < 1:
+        raise ValueError("block_size must be positive.")
+
+    predictions = np.full(len(test_local), np.nan, dtype=float)
+    refit_count = 0
+    for offset in range(0, len(test_local), block_size):
+        block_positions = np.arange(offset, min(offset + block_size, len(test_local)))
+        block_rows = test_local[block_positions]
+        block_origin = pd.Timestamp(dates.iloc[int(block_rows[0])])
+        train_idx = np.flatnonzero(
+            (dates < block_origin).to_numpy()
+            & (target_dates < block_origin).to_numpy()
+        )
+        if len(train_idx) < min_train_rows:
+            raise RuntimeError(
+                f"Insufficient walk-forward training rows before {block_origin.date()}: "
+                f"{len(train_idx)} < {min_train_rows}."
+            )
+
+        model = model_factory()
+        model.fit(X.iloc[train_idx], y[train_idx])
+        block_predictions = np.asarray(model.predict(X.iloc[block_rows]), dtype=float)
+        lower, upper = np.quantile(y[train_idx], [0.01, 0.99])
+        predictions[block_positions] = np.clip(block_predictions, lower, upper)
+        refit_count += 1
+
+    if not np.isfinite(predictions).all():
+        raise RuntimeError("Walk-forward evaluation produced missing or non-finite predictions.")
+    return predictions, refit_count
+
+
 def train_hybrid_horizons(df: pd.DataFrame):
     """Train each deployed model and calculate a chronological holdout diagnostic.
 
@@ -690,11 +740,17 @@ def train_hybrid_horizons(df: pd.DataFrame):
             predicted_return = 0.0
             residuals = y_test - test_pred
         else:
-            holdout_model = _trees_model(h)
-            holdout_model.fit(X_all.iloc[train_local], y_all[train_local])
-            model_type = "ExtraTrees experimental"
-            params = f"depth={6 if h == 5 else 3}, min_leaf={10 if h == 5 else 30}, trees=100"
-            test_pred = holdout_model.predict(X_all.iloc[test_local])
+            model_type = "ExtraTrees experimental · expanding-window walk-forward"
+            test_pred, refit_count = _rolling_holdout_predictions(
+                X_all, y_all, dates, target_dates, test_local,
+                model_factory=lambda: _trees_model(h),
+                block_size=21,
+                min_train_rows=100,
+            )
+            params = (
+                f"depth={6 if h == 5 else 3}, min_leaf={10 if h == 5 else 30}, "
+                f"trees=100; refit every 21 forecast origins ({refit_count} holdout refits)"
+            )
             test_mae = float(mean_absolute_error(y_test, test_pred))
             residuals = y_test - test_pred
             final_model = _trees_model(h)

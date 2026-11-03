@@ -24,7 +24,8 @@ The visible controls use **absolute levels**, not percentage shocks.
 
 - **Global oil production** has a broad 60,000–100,000 prototype slider range so users can test hypothetical supply shocks, including 64,725. The existing ML feature is still `EIA_world_prod_lag3m`, lagged by three months; values outside historical support are not reliable ML extrapolations.
 - **Prototype stress overlay:** each 1% production decline relative to the saved reference adds 0.8% to the displayed scenario price (with a 50% lower multiplier floor); each 1% production rise subtracts 0.8%. Geopolitical level 0–5 adds 0%, 2.5%, 5%, 7.5%, 10%, or 12.5%, respectively. Supply and geopolitical multipliers are combined.
-- **Illustrative WTI scenario estimate** = the existing ML-only scenario estimate multiplied by the transparent supply and GPR stress overlay. The overlay is a prototype assumption, not a coefficient learned or validated by the ML model.
+- **Reset-anchored WTI scenario price** starts at the latest completed WTI market close. When inputs change, the app applies the relative change between the ML scenario estimate and its reset-input estimate, multiplied by the relative supply/GPR stress factor. This keeps the unchanged case aligned to the observed WTI reference instead of displaying a model-only offset as the starting market price.
+- The supply and geopolitical multipliers remain explicit scenario assumptions; they are not coefficients learned or validated by the ML model.
 
 The geopolitical control is an event-scenario ladder from 0 to 5:
 
@@ -71,7 +72,7 @@ Scenarios are conditional feature experiments, not causal economic simulations. 
 - 1 and 4 sessions use a zero-return baseline.
 - 5, 10 and 20 sessions use experimental ExtraTrees pipelines.
 - The current chronological holdout has not shown a reliable improvement over the zero-return benchmark.
-- The Forecast & Backtest chart uses stored predictions from the chronological holdout. The model used for those predictions was fit only on data before the holdout period; this is not a full daily retraining walk-forward simulation.
+- The Forecast & Backtest chart uses saved chronological holdout predictions. For 5/10/20-session ExtraTrees horizons, the model is refit every 21 forecast origins using only labels whose target dates are strictly before each refit block. This expanding-window walk-forward design lets the model adapt as new observations become available without using future labels. The 1/4-session baselines remain unchanged.
 - GPR is a monthly lagged news-based index, not a live event detector. The 0–5 event ladder maps illustrative scenario labels to empirical percentiles of the training-set GPR distribution. It does not claim that a specific war or sanction always corresponds to one exact GPR number.
 - ExtraTrees is piecewise constant; a changed GPR input may produce no change in the model estimate. The app reports this instead of fabricating a movement.
 - The next-session estimate is a closing-price reference based on the dataset target; it is not an opening-price prediction.

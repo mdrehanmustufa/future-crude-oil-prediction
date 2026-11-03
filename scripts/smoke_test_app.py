@@ -82,9 +82,15 @@ tree = ast.parse(APP.read_text(encoding="utf-8"))
 functions = [
     node for node in tree.body
     if isinstance(node, ast.FunctionDef)
-    and node.name in {"make_scenario_features", "prototype_stress_multiplier"}
+    and node.name in {
+        "make_scenario_features", "prototype_stress_multiplier",
+        "scenario_price_from_current_reference"
+    }
 ]
-assert {node.name for node in functions} == {"make_scenario_features", "prototype_stress_multiplier"}
+assert {node.name for node in functions} == {
+    "make_scenario_features", "prototype_stress_multiplier",
+    "scenario_price_from_current_reference"
+}
 
 namespace = {
     "pd": pd,
@@ -97,14 +103,15 @@ module = ast.Module(body=functions, type_ignores=[])
 exec(compile(module, str(APP), "exec"), namespace)
 scenario_function = namespace["make_scenario_features"]
 stress_multiplier = namespace["prototype_stress_multiplier"]
+anchor_scenario_price = namespace["scenario_price_from_current_reference"]
 
 df = fe.standardize(pd.read_csv(DATA, parse_dates=["Date"]))
 production_values = pd.to_numeric(df["EIA_world_prod_lag3m"], errors="coerce").dropna()
 production_values = production_values[production_values > 0]
 source_text = APP.read_text(encoding="utf-8")
 assert initial_slider_values[3] == float(np.clip(initial_slider_values[3], 60000.0, 100000.0))
-assert "Illustrative WTI scenario estimate" in source_text
-assert "Prototype GPR premium (%)" in source_text
+assert "WTI scenario price" in source_text
+assert "GPR premium vs reset (%)" in source_text
 assert "prototype_stress_multiplier" in source_text
 assert "not a fitted causal coefficient" in source_text
 artifacts = joblib.load(MODEL)
@@ -147,6 +154,25 @@ assert low_supply_impact > 0 and high_supply_impact < 0
 assert gpr_zero_mult == 1.0 and gpr_zero_impact == 0.0
 assert gpr_five_mult > gpr_zero_mult and np.isclose(gpr_five_impact, 0.125)
 assert low_supply_mult > 1.0 and gpr_five_mult > 1.0
+
+# With unchanged inputs, the displayed scenario starts at the current market close.
+reset_stress_mult, _, _ = stress_multiplier(
+    base_global_production, base_global_production, initial_gpr_level
+)
+spot_reference = float(status.get("current_wti_close", base_wti))
+reset_anchor = anchor_scenario_price(
+    spot_reference, 98.14, 98.14, reset_stress_mult, reset_stress_mult
+)
+assert np.isclose(reset_anchor, spot_reference), (
+    "The unchanged/reset scenario must equal the latest WTI market reference."
+)
+higher_supply_stress = stress_multiplier(
+    64725.0, base_global_production, 5
+)[0]
+lower_price_anchor = anchor_scenario_price(
+    spot_reference, 100.0, 98.14, higher_supply_stress, reset_stress_mult
+)
+assert lower_price_anchor > spot_reference, "Supply/geopolitical stress must move the reset-anchored scenario upward."
 
 baseline_x, baseline_close = scenario_function(
     state, base_wti, base_dxy, base_brent, base_global_production, base_gpr
@@ -252,6 +278,12 @@ for h in (5, 10, 20):
 for h in (1, 4, 5, 10, 20):
     rows = state["models"][h].get("holdout_backtest", [])
     assert len(rows) >= 30, f"{h}-session holdout backtest rows missing."
+    recent_estimates = np.asarray(
+        [row["estimated_close"] for row in rows[-60:]], dtype=float
+    )
+    assert len(np.unique(np.round(recent_estimates, 2))) >= 4, (
+        f"{h}-session recent model-estimate line is unexpectedly flat."
+    )
     for row in rows[:5]:
         assert pd.Timestamp(row["target_date"]) > pd.Timestamp(row["feature_date"])
         assert row["actual_close"] > 0 and row["estimated_close"] > 0
