@@ -19,7 +19,7 @@ MODEL_FILE = ROOT / "model_artifacts.joblib"
 STATUS_FILE = ROOT / "data_refresh_status.json"
 
 st.set_page_config(
-    page_title="Crude Oil Scenario Intelligence",
+    page_title="Crude Oil Intelligence",
     page_icon="🛢️",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -37,16 +37,25 @@ html, body, [data-testid="stAppViewContainer"] {
 [data-testid="stMarkdownContainer"], [data-testid="stMetricLabel"],
 [data-testid="stMetricValue"], [data-testid="stCaptionContainer"] { color: #202a35; }
 .hero {
-    background: #ffffff; border: 1px solid #e9e4d8; border-left: 6px solid #b89a5a;
-    border-radius: 16px; padding: 1.55rem 1.8rem; margin: 0 0 1.15rem 0;
-    box-shadow: 0 5px 20px rgba(30,35,40,.045);
+    display:flex; align-items:center; gap:1.2rem;
+    background:linear-gradient(110deg,#ffffff 0%,#fcfbf8 100%);
+    border:1px solid #e9e4d8; border-left:6px solid #b89a5a;
+    border-radius:18px; padding:1.25rem 1.55rem; margin:0 0 1rem 0;
+    box-shadow:0 7px 24px rgba(30,35,40,.055);
 }
-.hero .eyebrow {color:#927640; font-size:.72rem; font-weight:750;
-    letter-spacing:.14em; text-transform:uppercase;}
-.hero h1 {color:#1d2935 !important; font-size:2.15rem; margin:.32rem 0 .3rem 0;
-    line-height:1.15; letter-spacing:-.035em;}
-.hero p {color:#56616d !important; margin:.25rem 0 0 0; font-size:1rem;}
-.hero .note {color:#7a838b !important; font-size:.78rem; margin-top:.65rem;}
+.hero-mark {width:76px; min-width:76px; height:76px; display:flex; align-items:center; justify-content:center;}
+.hero-copy {min-width:0;}
+.hero .eyebrow {color:#927640; font-size:.7rem; font-weight:800;
+    letter-spacing:.16em; text-transform:uppercase;}
+.hero h1 {color:#1d2935 !important; font-size:2.1rem; margin:.16rem 0 .18rem 0;
+    line-height:1.1; letter-spacing:-.035em;}
+.hero p {color:#56616d !important; margin:.16rem 0 0 0; font-size:.98rem;}
+.hero .note {color:#7a838b !important; font-size:.76rem; margin-top:.48rem;}
+.market-heading {display:flex; align-items:center; gap:.5rem; margin:.2rem 0 .7rem 0;}
+.market-heading h3 {margin:0; color:#1f2b35;}
+.driver-note {background:#f7f8fa; border:1px solid #e5e9ee; border-radius:10px;
+    padding:.65rem .8rem; color:#59636d; font-size:.82rem; margin-top:.55rem;}
+.chart-card {background:#fff; border:1px solid #e5e8ec; border-radius:13px; padding:.7rem .8rem;}
 .price-card {
     background:#fff; border:1px solid #e5e6e7; border-radius:14px;
     padding:1.1rem 1.2rem; min-height:140px;
@@ -83,10 +92,34 @@ h1, h2, h3, h4 {color:#1f2b35 !important;}
 
 st.markdown("""
 <section class="hero">
-  <div class="eyebrow">Energy markets · Interactive research prototype</div>
-  <h1>Crude Oil Scenario Intelligence</h1>
-  <p>Explore how WTI market, supply, currency and geopolitical assumptions change a trained model's conditional estimate.</p>
-  <div class="note">64 trained input features · 13 scenario controls · Historical model evaluation · Research use only</div>
+  <div class="hero-mark">
+    <svg viewBox="0 0 100 100" width="74" height="74" role="img" aria-label="Crude oil barrel logo">
+      <defs>
+        <linearGradient id="barrelBody" x1="0" x2="1">
+          <stop offset="0" stop-color="#12263c"/><stop offset=".5" stop-color="#243b52"/><stop offset="1" stop-color="#0b1b2d"/>
+        </linearGradient>
+        <linearGradient id="barrelGold" x1="0" x2="1">
+          <stop offset="0" stop-color="#8f6b2d"/><stop offset=".45" stop-color="#e5c47b"/><stop offset="1" stop-color="#9c783c"/>
+        </linearGradient>
+      </defs>
+      <path d="M18 18 Q50 7 82 18 L82 81 Q50 94 18 81 Z" fill="url(#barrelBody)" stroke="#152b41" stroke-width="2"/>
+      <ellipse cx="50" cy="18" rx="32" ry="9" fill="#e7edf2" stroke="#c3ccd5" stroke-width="2"/>
+      <ellipse cx="50" cy="18" rx="24" ry="5.5" fill="#20374f"/>
+      <ellipse cx="71" cy="16.5" rx="4.2" ry="2.2" fill="#d9b86f"/>
+      <path d="M18 35 Q50 42 82 35 L82 41 Q50 49 18 41 Z" fill="url(#barrelGold)"/>
+      <path d="M18 61 Q50 68 82 61 L82 67 Q50 75 18 67 Z" fill="url(#barrelGold)"/>
+      <path d="M18 81 Q50 92 82 81" fill="none" stroke="#d8b46a" stroke-width="4" stroke-linecap="round"/>
+      <path d="M50 45 C44 54 38 60 38 67 C38 75 43.5 80 50 80 C56.5 80 62 75 62 67 C62 60 56 54 50 45 Z"
+            fill="#d99028" stroke="#f2cb76" stroke-width="2"/>
+      <path d="M47 60 C44 65 44 69 47 72" fill="none" stroke="#fff4d9" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <div class="hero-copy">
+    <div class="eyebrow">Energy markets · Research dashboard</div>
+    <h1>Crude Oil Intelligence</h1>
+    <p>WTI market overview · global supply scenarios · model evaluation</p>
+    <div class="note">64 trained input features · 5 interactive scenario drivers · conditional research estimates</div>
+  </div>
 </section>
 """, unsafe_allow_html=True)
 
@@ -163,10 +196,10 @@ def load_saved_state():
 
 
 def make_scenario_features(
-    state, wti_price_usd, dxy_level, inventory_mmbbl, oil_rig_count,
-    brent_price_usd, gpr_index
+    state, wti_price_usd, dxy_level, brent_price_usd,
+    global_production_value, gpr_index
 ):
-    """Create a temporary 64-feature row from absolute scenario levels."""
+    """Build a temporary 64-feature row using five trained, user-facing scenario drivers."""
     df = state["df"]
     idx = state["feature_idx"]
     feature_names = state["feature_names"]
@@ -175,13 +208,16 @@ def make_scenario_features(
     values = {
         "WTI price": wti_price_usd,
         "DXY level": dxy_level,
-        "US commercial crude stocks (million barrels)": inventory_mmbbl,
-        "US oil rig count": oil_rig_count,
         "Brent price": brent_price_usd,
+        "Global oil production": global_production_value,
         "Geopolitical Risk Index": gpr_index,
     }
-    if any(not np.isfinite(float(value)) or float(value) <= 0 for value in values.values()):
-        raise ValueError("All scenario reference levels must be positive finite numbers.")
+    if any(not np.isfinite(float(value)) for value in values.values()):
+        raise ValueError("Scenario inputs must be finite numbers.")
+    if any(float(values[key]) <= 0 for key in ["WTI price", "DXY level", "Brent price", "Global oil production"]):
+        raise ValueError("WTI, DXY, Brent and global production must remain positive.")
+    if float(gpr_index) < 0:
+        raise ValueError("Geopolitical Risk Index cannot be negative.")
 
     old_wti = float(scenario_df.at[idx, "WTI_Close"])
     if old_wti <= 0:
@@ -200,14 +236,18 @@ def make_scenario_features(
         scenario_df["DXY_Close"], errors="coerce"
     ).pct_change(fill_method=None)
 
-    scenario_df.at[idx, "INV_US_Crude_Stocks_kbbl"] = float(inventory_mmbbl) * 1000.0
-    scenario_df.at[idx, "RIG_US_Oil_Rigs"] = float(oil_rig_count)
-
+    # Brent, worldwide production and GPR are existing trained exogenous features.
     brent_column = "CMD_brent_lag1"
     old_brent = pd.to_numeric(pd.Series([scenario_df.at[idx, brent_column]]), errors="coerce").iloc[0]
     if pd.isna(old_brent) or old_brent <= 0:
         raise ValueError("Stored lagged Brent input is missing or invalid.")
     scenario_df.at[idx, brent_column] = float(brent_price_usd)
+
+    production_column = "EIA_world_prod_lag3m"
+    old_production = pd.to_numeric(pd.Series([scenario_df.at[idx, production_column]]), errors="coerce").iloc[0]
+    if pd.isna(old_production) or old_production <= 0:
+        raise ValueError("Stored global production input is missing or invalid.")
+    scenario_df.at[idx, production_column] = float(global_production_value)
 
     gpr_columns = ["GPR_total_lag1m", "GPR_threats_lag1m", "GPR_acts_lag1m"]
     old_gpr = pd.to_numeric(pd.Series([scenario_df.at[idx, gpr_columns[0]]]), errors="coerce").iloc[0]
@@ -327,25 +367,23 @@ market_inputs = {
     ),
 }
 
-LATEST_PUBLIC_SCENARIO_INPUTS = {
-    "inventory_mmbbl": 410.6,
-    "inventory_as_of": "Week ending 23 Oct 2026",
-    "oil_rigs": 462,
-    "rigs_as_of": "30 Oct 2026",
-    "gpr_index": 150.52,
-    "gpr_as_of": "Oct 2026 monthly reading",
-}
+scenario_idx = state["feature_idx"]
+global_production_reference = float(df.at[scenario_idx, "EIA_world_prod_lag3m"])
+gpr_reference = float(df.at[scenario_idx, "GPR_total_lag1m"])
 
 latest_defaults = {
     "scenario_wti_price": float(market_inputs["wti"]["value"]),
     "scenario_brent_price": float(market_inputs["brent"]["value"]),
     "scenario_dxy_level": float(market_inputs["dxy"]["value"]),
-    "scenario_inventory_mmbbl": float(LATEST_PUBLIC_SCENARIO_INPUTS["inventory_mmbbl"]),
-    "scenario_oil_rigs": int(LATEST_PUBLIC_SCENARIO_INPUTS["oil_rigs"]),
-    "scenario_gpr_index": float(LATEST_PUBLIC_SCENARIO_INPUTS["gpr_index"]),
+    "scenario_global_production": global_production_reference,
+    "scenario_gpr_index": gpr_reference,
 }
 
-st.markdown("### Market snapshot")
+st.markdown(
+    '<div class="market-heading"><span style="color:#b38a3b;font-size:1.25rem">▥</span>'
+    '<h3>Global Market Overview · WTI reference</h3></div>',
+    unsafe_allow_html=True
+)
 snap1, snap2, snap3, snap4 = st.columns(4, gap="medium")
 with snap1:
     price_card(
@@ -363,7 +401,7 @@ with snap3:
     price_card(
         "US Dollar Index · DXY", f"{market_inputs['dxy']['value']:,.2f}",
         f"Latest daily close: {market_inputs['dxy']['date']}",
-        market_inputs["dxy"]["source"], "Scenario input"
+        market_inputs["dxy"]["source"], "Currency indicator"
     )
 with snap4:
     if market_inputs["wti"]["date"] == market_inputs["brent"]["date"]:
@@ -377,19 +415,23 @@ with snap4:
         "Difference between benchmark prices", "Market context"
     )
 
-with st.expander("What do the oil benchmarks mean?"):
+with st.expander("Market terms & global data coverage"):
     st.markdown(
         "**WTI:** US crude-oil benchmark. **Brent:** global seaborne crude-oil benchmark. "
         "**DXY:** US Dollar Index, measuring the dollar against a basket of major currencies."
     )
     st.markdown(
-        "**Urals:** a Russian export crude blend. **ESPO:** a Russian crude blend shipped through "
-        "the East Siberia–Pacific Ocean pipeline, mainly toward Asia-Pacific markets."
+        "**Global oil production:** included in the trained model as a lagged EIA world-production feature. "
+        "**GPR:** a lagged geopolitical-risk index."
     )
     st.caption(
-        "Urals, ESPO, European natural gas (TTF), wheat, urea, TPU and global-production indicators "
-        "remain among the model's 64 trained features. They are held at their latest stored values "
-        "in this simplified scenario panel; they have not been removed from the model."
+        "The model also retains regional US commercial inventory and US oil-rig features from its training data, "
+        "but these are held fixed in the Expo scenario panel. Global observed inventory and worldwide rig-count "
+        "series are not currently trained inputs, so they are not presented as sliders that change the model output."
+    )
+    st.markdown(
+        "Global inventory reference: [IEA observed oil inventories](https://www.iea.org/data-and-statistics/charts/global-observed-oil-inventories-2021-2026). "
+        "Worldwide rig-count reference: [Baker Hughes Worldwide Rig Count](https://rigcount.bakerhughes.com/intl-rig-count/)."
     )
 
 if market_date > feature_date:
@@ -544,105 +586,100 @@ with market_tab:
         st.info("There are not enough historical observations to display the benchmark replay.")
 
 with scenario_tab:
-    st.subheader("Simple market scenario simulator")
+    st.subheader("What-if Scenario Analysis")
     st.markdown(
-        '<div class="section-lead"><strong>Start from current reference values.</strong> '
-        'Change one or more inputs and the model result updates beside the controls. '
-        'Reset restores the latest published reference values.</div>',
+        '<div class="section-lead"><strong>Start from the latest reference values.</strong> '
+        'Adjust a market or global factor and compare its conditional WTI estimate with the reset case. '
+        'The small graph updates with the selected inputs.</div>',
         unsafe_allow_html=True
     )
+
+    global_prod_step = max(abs(global_production_reference) * 0.002, 0.01)
+    global_prod_min = max(0.001, global_production_reference * 0.75)
+    global_prod_max = max(global_prod_min + global_prod_step, global_production_reference * 1.25)
+    gpr_step = max(abs(gpr_reference) * 0.01, 0.1)
+    gpr_max = max(100.0, gpr_reference * 3.0, gpr_reference + 50.0)
 
     for key, value in latest_defaults.items():
         st.session_state.setdefault(key, value)
 
     st.button(
-        "↺ Reset to latest data",
+        "↺ Reset to current references",
         key="reset_scenario_latest",
         type="secondary",
         on_click=reset_scenario_to_latest,
         kwargs={"defaults": latest_defaults},
-        help="Restore the latest daily market closes and latest published weekly/monthly supply and risk observations."
+        help="Restore the latest completed WTI, Brent and DXY closes and the latest stored global production/GPR feature values."
     )
 
-    control_col, result_col = st.columns([1.35, 1], gap="large")
+    control_col, result_col = st.columns([1.15, 1], gap="large")
 
     with control_col:
         with st.container(border=True):
             st.markdown("#### 1 · Market prices & currency")
-            w1, w2 = st.columns(2, gap="medium")
-            with w1:
+            market_left, market_right = st.columns(2, gap="medium")
+            with market_left:
                 wti_price = st.slider(
-                    "WTI crude price (USD/barrel)",
+                    "WTI crude price · USD/bbl",
                     min_value=float(max(1.0, market_inputs["wti"]["value"] * 0.75)),
                     max_value=float(market_inputs["wti"]["value"] * 1.25),
                     step=0.10, key="scenario_wti_price",
-                    help=f"Latest daily close: USD {market_inputs['wti']['value']:,.2f} on {market_inputs['wti']['date']}. This is the main WTI price being modelled."
+                    help=f"Latest daily close: USD {market_inputs['wti']['value']:,.2f} on {market_inputs['wti']['date']}. Main target price."
                 )
                 brent_price = st.slider(
-                    "Brent crude price (USD/barrel)",
+                    "Brent crude price · USD/bbl",
                     min_value=float(max(1.0, market_inputs["brent"]["value"] * 0.75)),
                     max_value=float(market_inputs["brent"]["value"] * 1.25),
                     step=0.10, key="scenario_brent_price",
-                    help=f"Latest daily close: USD {market_inputs['brent']['value']:,.2f} on {market_inputs['brent']['date']}. Brent is the main international crude benchmark."
+                    help=f"Latest daily close: USD {market_inputs['brent']['value']:,.2f} on {market_inputs['brent']['date']}. Global benchmark."
                 )
-            with w2:
+            with market_right:
                 dxy_level = st.slider(
                     "US Dollar Index · DXY",
                     min_value=float(max(1.0, market_inputs["dxy"]["value"] * 0.90)),
                     max_value=float(market_inputs["dxy"]["value"] * 1.10),
                     step=0.05, key="scenario_dxy_level",
-                    help=f"Latest daily close: {market_inputs['dxy']['value']:,.2f} on {market_inputs['dxy']['date']}. A stronger or weaker US dollar can affect dollar-priced commodities."
+                    help=f"Latest daily close: {market_inputs['dxy']['value']:,.2f} on {market_inputs['dxy']['date']}."
                 )
-
             st.caption(
-                f"WTI reference: {market_inputs['wti']['date']} · "
-                f"Brent reference: {market_inputs['brent']['date']} · "
-                f"DXY reference: {market_inputs['dxy']['date']}. "
-                "Market quotes refresh from Yahoo Finance and are cached for 15 minutes."
+                f"Reference dates — WTI: {market_inputs['wti']['date']} · "
+                f"Brent: {market_inputs['brent']['date']} · DXY: {market_inputs['dxy']['date']}."
             )
 
         with st.container(border=True):
-            st.markdown("#### 2 · Supply & storage")
-            s1, s2 = st.columns(2, gap="medium")
-            with s1:
-                inventory_mmbbl = st.slider(
-                    "US commercial crude stocks (million barrels)",
-                    min_value=250.0, max_value=550.0, step=0.1,
-                    key="scenario_inventory_mmbbl",
-                    help="Latest EIA level: 410.6 million barrels for the week ending 23 Oct 2026. This excludes the Strategic Petroleum Reserve."
-                )
-            with s2:
-                oil_rigs = st.slider(
-                    "Active US oil rigs (count)",
-                    min_value=250, max_value=650, step=1,
-                    key="scenario_oil_rigs",
-                    help="Latest Baker Hughes oil-directed rig count: 462, as of 30 Oct 2026. This is oil rigs, not total oil-and-gas rigs."
-                )
+            st.markdown("#### 2 · Global supply")
+            global_production = st.slider(
+                "World oil production · EIA historical input",
+                min_value=float(global_prod_min),
+                max_value=float(global_prod_max),
+                step=float(global_prod_step),
+                key="scenario_global_production",
+                help="Uses the existing EIA_world_prod_lag3m feature and its original dataset unit. The feature is lagged by three months, not a live daily production feed."
+            )
             st.caption(
-                f"EIA commercial crude stocks: {LATEST_PUBLIC_SCENARIO_INPUTS['inventory_mmbbl']:.1f} million barrels "
-                f"({LATEST_PUBLIC_SCENARIO_INPUTS['inventory_as_of']}; excludes SPR). "
-                f"Baker Hughes oil-directed rigs: {LATEST_PUBLIC_SCENARIO_INPUTS['oil_rigs']} "
-                f"({LATEST_PUBLIC_SCENARIO_INPUTS['rigs_as_of']})."
+                f"Current model reference: {global_production_reference:,.3f} · "
+                "EIA world-production feature · 3-month lag · source units retained."
             )
 
         with st.container(border=True):
             st.markdown("#### 3 · Geopolitical risk")
             gpr_index = st.slider(
                 "Geopolitical Risk Index · GPR",
-                min_value=0.0, max_value=500.0, step=0.5,
+                min_value=0.0,
+                max_value=float(gpr_max),
+                step=float(gpr_step),
                 key="scenario_gpr_index",
-                help="Latest monthly reading used as the reference: 150.52 for October 2026. Higher values indicate more geopolitical-risk coverage in news."
+                help="Adjusts the model's lagged GPR total, threats and acts features together."
             )
             st.caption(
-                f"Reference GPR: {LATEST_PUBLIC_SCENARIO_INPUTS['gpr_index']:.2f} "
-                f"({LATEST_PUBLIC_SCENARIO_INPUTS['gpr_as_of']}; Caldara–Iacoviello series as reported by MacroDataHub). "
-                "It is a monthly index, not a live intraday news feed."
+                f"Current trained-feature reference: {gpr_reference:,.3f} · "
+                "GPR source feature is lagged by one month."
             )
 
     with result_col:
         with st.container(border=True):
             st.markdown("#### Live scenario outcome")
-            st.caption("The result recalculates automatically when any slider changes.")
+            st.caption("The estimate and mini graph update whenever a scenario input changes.")
             chosen_horizon = st.selectbox(
                 "Forecast horizon", SCENARIO_HORIZONS, index=0,
                 format_func=lambda h: labels[h],
@@ -653,84 +690,96 @@ with scenario_tab:
                     state,
                     latest_defaults["scenario_wti_price"],
                     latest_defaults["scenario_dxy_level"],
-                    latest_defaults["scenario_inventory_mmbbl"],
-                    latest_defaults["scenario_oil_rigs"],
                     latest_defaults["scenario_brent_price"],
+                    latest_defaults["scenario_global_production"],
                     latest_defaults["scenario_gpr_index"],
                 )
                 scenario_x, scenario_close = make_scenario_features(
-                    state, wti_price, dxy_level, inventory_mmbbl,
-                    oil_rigs, brent_price, gpr_index
+                    state, wti_price, dxy_level, brent_price,
+                    global_production, gpr_index
                 )
 
-                model = models[chosen_horizon]["pipeline"]
-                base_return = float(model.predict(base_x)[0])
-                scenario_return = float(model.predict(scenario_x)[0])
-                base_price = base_close * (1.0 + base_return)
-                scenario_price = scenario_close * (1.0 + scenario_return)
-                delta_price = scenario_price - base_price
-                delta_return_pp = (scenario_return - base_return) * 100.0
+                horizon_results = []
+                for horizon in SCENARIO_HORIZONS:
+                    horizon_model = models[horizon]["pipeline"]
+                    ref_return = float(horizon_model.predict(base_x)[0])
+                    whatif_return = float(horizon_model.predict(scenario_x)[0])
+                    ref_price = base_close * (1.0 + ref_return)
+                    whatif_price = scenario_close * (1.0 + whatif_return)
+                    horizon_results.append({
+                        "horizon": horizon,
+                        "reference_price": ref_price,
+                        "scenario_price": whatif_price,
+                        "reference_return": ref_return,
+                        "scenario_return": whatif_return,
+                    })
 
-                if (not np.isfinite(scenario_return) or
-                    not np.isfinite(scenario_price) or scenario_price <= 0):
+                selected = next(item for item in horizon_results if item["horizon"] == chosen_horizon)
+                scenario_price = selected["scenario_price"]
+                reference_price = selected["reference_price"]
+                scenario_return = selected["scenario_return"]
+                reference_return = selected["reference_return"]
+                delta_price = scenario_price - reference_price
+                delta_return_pp = (scenario_return - reference_return) * 100.0
+
+                if (not np.isfinite(scenario_price) or scenario_price <= 0 or
+                    not np.isfinite(scenario_return)):
                     raise ValueError("Model returned an invalid scenario estimate.")
 
                 st.metric(
-                    "WTI reference in selected scenario",
-                    f"USD {scenario_close:,.2f}/bbl"
-                )
-                st.metric(
-                    "Scenario estimated WTI close",
+                    f"Scenario WTI estimate · {chosen_horizon} sessions",
                     f"USD {scenario_price:,.2f}/bbl",
                     delta=f"USD {delta_price:+,.2f} vs reset case"
                 )
                 st.metric(
                     "Estimated return",
                     f"{scenario_return * 100:+.3f}%",
-                    delta=f"{delta_return_pp:+.3f} percentage points vs reset case"
-                )
-                st.divider()
-                st.markdown("**Reset case vs your scenario**")
-                st.write(
-                    f"Reset case: **USD {base_price:,.2f}/bbl** "
-                    f"({base_return * 100:+.3f}%)"
-                )
-                st.write(
-                    f"Your scenario: **USD {scenario_price:,.2f}/bbl** "
-                    f"({scenario_return * 100:+.3f}%)"
+                    delta=f"{delta_return_pp:+.3f} pp vs reset case"
                 )
                 st.caption(
-                    f"Model horizon: {labels[chosen_horizon]}. "
-                    "The displayed outcome is conditional on the values you selected, not a guaranteed market price."
+                    f"Reset/reference case: USD {reference_price:,.2f}/bbl · "
+                    f"Changed scenario: USD {scenario_price:,.2f}/bbl."
                 )
 
+                graph_horizons = [item["horizon"] for item in horizon_results]
+                reference_prices = [item["reference_price"] for item in horizon_results]
+                scenario_prices = [item["scenario_price"] for item in horizon_results]
+                fig, ax = plt.subplots(figsize=(6.0, 2.55))
+                fig.patch.set_facecolor("#ffffff")
+                ax.set_facecolor("#ffffff")
+                ax.plot(
+                    graph_horizons, reference_prices, marker="o", markersize=5,
+                    linewidth=2.1, color="#738294", label="Reset case"
+                )
+                ax.plot(
+                    graph_horizons, scenario_prices, marker="o", markersize=5,
+                    linewidth=2.6, color="#b58a3b", label="Changed scenario"
+                )
+                ax.set_xticks(graph_horizons, [f"{h} sessions" for h in graph_horizons])
+                ax.set_ylabel("WTI estimate · USD/bbl", fontsize=8)
+                ax.tick_params(axis="both", labelsize=8, colors="#66717c")
+                ax.grid(axis="y", alpha=.18, color="#9aa4ad")
+                ax.spines[["top", "right", "left"]].set_visible(False)
+                ax.spines["bottom"].set_color("#d8dee4")
+                ax.legend(frameon=False, fontsize=8, ncol=2, loc="upper left")
+                fig.tight_layout(pad=1.0)
+                st.pyplot(fig, clear_figure=True)
+                plt.close(fig)
+
                 if not models[chosen_horizon]["beats_zero"]:
-                    st.warning(
-                        "Research limitation: this experimental ML horizon did not beat the zero-return benchmark "
-                        "on the current chronological holdout. Use the result as an exploratory what-if comparison, "
-                        "not as a proven trading forecast."
+                    st.caption(
+                        "Research note: this experimental ExtraTrees horizon did not beat the zero-return "
+                        "benchmark in the latest chronological holdout. Treat this as an exploratory what-if result."
                     )
             except Exception as exc:
                 st.error(f"Scenario calculation unavailable: {type(exc).__name__}: {exc}")
 
-    st.caption(
-        "All 64 trained model features are still passed to the model. This simple panel exposes six high-level controls; "
-        "the other stored indicators (for example Urals, ESPO, TTF, wheat, urea, TPU and global production) stay at their "
-        "latest saved feature values. GPR and the market inputs shown above are the scenario-adjustable inputs."
+    st.markdown(
+        '<div class="driver-note"><strong>Global-data coverage:</strong> Global oil production and GPR are trained inputs. '
+        'The existing model also contains US-specific inventory and rig-count history, but these are held at their stored values. '
+        'Global inventories and worldwide rig counts are not yet trained as model drivers, so they are not mislabeled as global sliders.</div>',
+        unsafe_allow_html=True
     )
-
-    with st.expander("What do the other model indicators mean?"):
-        st.markdown(
-            "- **Urals:** Russian export crude blend, used as a regional crude-price indicator.\n"
-            "- **ESPO:** Russian crude blend shipped through the East Siberia–Pacific Ocean pipeline, mainly toward Asia-Pacific.\n"
-            "- **TTF:** European natural-gas benchmark.\n"
-            "- **TPU:** Trade Policy Uncertainty index.\n"
-            "- **Wheat and urea:** broader commodity and fertilizer price indicators.\n"
-            "- **Global production:** a lagged estimate of worldwide oil output."
-        )
-        st.write(
-            "These inputs remain in the trained feature row, but they are not individually adjustable in the simplified Expo panel."
-        )
 
 with st.expander("Data freshness, sources and model diagnostics"):
     st.markdown("**Last successful automated refresh (UTC)**")
@@ -741,9 +790,9 @@ with st.expander("Data freshness, sources and model diagnostics"):
     st.write("WTI source:", status.get("wti_source_status", "Not recorded"))
     st.write("Brent source:", status.get("brent_source_status", "Awaiting first Brent refresh"))
     st.write("DXY source:", status.get("dxy_source_status", "Not recorded"))
-    st.write("Scenario EIA commercial stocks reference:", "410.6 million barrels · week ending 23 Oct 2026 · excludes SPR")
-    st.write("Scenario Baker Hughes US oil rig reference:", "462 oil-directed rigs · 30 Oct 2026")
-    st.write("Scenario GPR reference:", "150.52 · October 2026 monthly reading")
+    st.write("Global production input:", f"{global_production_reference:,.3f} · EIA world-production feature · 3-month lag")
+    st.write("GPR input:", f"{gpr_reference:,.3f} · stored feature · 1-month lag")
+    st.write("Regional inputs held at saved values:", "US commercial inventories and US oil-rig history")
     st.write("Other stored model inputs:", status.get("macro_feature_status", "Latest stored dataset values."))
 
     st.markdown("**Chronological holdout performance**")
@@ -772,6 +821,6 @@ with st.expander("Data freshness, sources and model diagnostics"):
 
 st.caption(
     "Data quality note: market cards use the latest completed daily close when available, or clearly labeled saved-data fallback. "
-    "Scenario inputs are absolute levels for WTI, Brent, DXY, US commercial crude stocks, US oil rigs and GPR. "
-    "All other saved trained features remain in the 64-feature model row."
+    "Scenario inputs are WTI, Brent, DXY, lagged global oil production and lagged GPR. "
+    "Regional US inventory/rig features remain in the 64-feature model row at their stored values."
 )
