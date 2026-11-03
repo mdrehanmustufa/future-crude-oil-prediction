@@ -5,7 +5,7 @@ A Streamlit research dashboard explaining WTI and Brent benchmarks, providing mu
 ## Dashboard guide
 
 1. **Market snapshot** — saved daily WTI and Brent futures closes, source dates, and Brent-minus-WTI spread when both dates match.
-2. **Scenario Lab** — primary Expo view, with presets and 13 adjustable inputs covering WTI, DXY, US commercial crude inventories, US oil rigs, six commodity markets, GPR, TPU and global oil production.
+2. **Scenario Lab** — primary Expo view, with presets and 13 adjustable inputs covering WTI, DXY, US commercial crude inventories, US oil rigs, six commodity markets, GPR, TPU and global oil production. The scenario estimate is displayed beside the controls and updates when any control changes. The current market snapshot shows WTI, Brent, DXY and the synchronized spread.
 3. **Forecast & Backtest** — multi-horizon estimates, chronological holdout diagnostics and a 90-day previous-close benchmark replay.
 
 The dashboard labels saved daily futures closes and model estimates explicitly; it does not call them live quotes or tomorrow's opening price. The target is WTI future close, not open.
