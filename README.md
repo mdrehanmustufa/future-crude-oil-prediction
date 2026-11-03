@@ -1,25 +1,26 @@
-# Crude Oil Market Intelligence
+# Crude Oil Intelligence
 
 A Streamlit research dashboard explaining WTI and Brent benchmarks, providing multi-horizon WTI reference estimates, and supporting a market what-if simulator.
 
 ## Dashboard guide
 
-1. **Market snapshot** — latest completed daily WTI, Brent and DXY closes from Yahoo Finance when available, with saved-dataset fallback and source dates.
-2. **Scenario Lab** — six simple, level-based controls: WTI price, Brent price, DXY, US commercial crude stocks, US oil-directed rig count and the Geopolitical Risk Index (GPR). A Reset button restores the latest reference levels.
+1. **Global market overview** — latest completed daily WTI, Brent and DXY closes from Yahoo Finance when available, with saved-dataset fallback and source dates.
+2. **What-if Scenario Analysis** — five simple absolute-level controls: WTI, Brent, DXY, the existing EIA world-oil-production feature, and GPR. A Reset button restores the current market references and saved lagged global inputs.
 3. **Forecast & Backtest** — multi-horizon estimates, chronological holdout diagnostics and the 90-day previous-close benchmark replay.
 
-The six visible controls do not replace the model inputs. All 64 trained features still go into the saved model. The other stored features (for example Urals, ESPO, TTF, wheat, urea, TPU and global production) are held at their latest saved row values while the six user-facing scenario assumptions are varied.
+The dashboard title is **Crude Oil Intelligence**. The main page keeps the market overview first, then places the scenario controls beside the model result and a compact chart comparing reset/reference and changed-scenario WTI estimates at 5, 10 and 20 trading sessions.
+
+All 64 trained model features still go into the saved models. The visible scenario sliders expose only features that can be mapped honestly to existing trained inputs. US commercial inventory and US oil-rig history remain in the model's feature row at their saved values; they are not relabelled as global data.
 
 ### Scenario reference levels
 
 - **Market prices:** latest completed Yahoo Finance daily close for CL=F (WTI), BZ=F (Brent) and DX-Y.NYB (DXY), refreshed in the app cache every 15 minutes. When Yahoo Finance is unavailable, the app falls back to the saved dataset and shows that fallback in the source label.
-- **US commercial crude stocks:** 410.6 million barrels, EIA week ending 23 October 2026 (published 28 October 2026). This excludes the Strategic Petroleum Reserve.
-- **US oil-directed rigs:** 462, Baker Hughes count for 30 October 2026. This is the oil-specific count, not the total U.S. oil-and-gas rig count.
-- **Geopolitical Risk Index:** 150.52, October 2026 monthly reading (Caldara–Iacoviello index, as reported by MacroDataHub, last updated 2 November 2026).
+- **Global oil production:** the existing EIA world-production feature, `EIA_world_prod_lag3m`, uses the dataset's original units and three-month lag. The dashboard initializes its slider from the latest complete model feature row; it is not a live daily feed.
+- **Geopolitical Risk Index:** the existing GPR total/threats/acts features are adjusted together from the latest complete model row. The training feature is lagged by one month, not a real-time event feed.
 
-These reference series have different release frequencies. The market quotes are daily; commercial stocks and rig counts are weekly; GPR is monthly. The Reset button restores the latest published reference level for each series, not a fabricated same-day observation.
+Global observed inventories and worldwide rig-count reports are available from external sources, but neither is currently a separately trained input in this model. The IEA publishes a global observed oil-inventories series, and Baker Hughes publishes a worldwide rig-count report. Those series need historical alignment, source-lag handling, inclusion in the training feature matrix, retraining and chronological validation before they can control scenario outputs. See [IEA global observed inventories](https://www.iea.org/data-and-statistics/charts/global-observed-oil-inventories-2021-2026) and [Baker Hughes Worldwide Rig Count](https://rigcount.bakerhughes.com/intl-rig-count/).
 
-The simple UI controls use **absolute levels**, not percentage shocks. Inventory is entered in million barrels and converted to the model's thousand-barrel feature. The GPR value scales the stored total, threats and acts feature trio together.
+The visible controls use **absolute levels**, not percentage shocks. GPR scales the stored total, threats and acts feature trio proportionally. Small changes may not move an ExtraTrees estimate when a new value remains inside the same tree-leaf regions.
 
 ## Trained model inputs
 
@@ -40,10 +41,11 @@ Strategic Petroleum Reserve (SPR) and IEA emergency-stock release volumes, OPEC+
 
 ## Scenario controls and units
 
-- WTI, Brent and DXY controls are absolute market/index levels in USD per barrel or index points.
-- Inventory is an absolute level in million barrels; the feature transformation converts it to the model's thousand-barrel (kbbl) unit.
-- Rig count is an absolute number of active U.S. oil-directed rigs.
-- GPR is an absolute monthly index level; the stored total, threats and acts features move proportionally together.
+- WTI and Brent controls are absolute market levels in USD per barrel.
+- DXY is an absolute index level.
+- Global oil production is adjusted as an absolute value in the original EIA dataset units; the stored feature is lagged by three months.
+- GPR is an absolute index level; the stored total, threats and acts features move proportionally together.
+- US commercial inventory and US oil-rig features remain fixed at the latest saved historical row and are not presented as global scenario sliders.
 
 Scenarios are conditional feature experiments, not causal economic simulations. A changed input does not prove it causes an oil-price move.
 
