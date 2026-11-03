@@ -44,20 +44,28 @@ def market_snapshot(symbol):
     ticker = yf.Ticker(symbol)
     quote = None
     quote_type = "Latest available quote"
+    change_pct = None
     try:
         info = ticker.fast_info
         quote = info.get("last_price")
+        previous = info.get("previous_close")
         if quote is not None and pd.notna(quote):
             quote = float(quote)
             quote_type = "Latest market quote · provider feed"
+            if previous is not None and pd.notna(previous) and float(previous) != 0:
+                change_pct = (quote / float(previous) - 1) * 100
     except Exception:
         quote = None
-    if quote is None:
+    if quote is None or change_pct is None:
         hist = ticker.history(period="5d", interval="1d", auto_adjust=False)
         if hist is not None and not hist.empty:
-            quote = float(hist["Close"].dropna().iloc[-1])
-            quote_type = "Latest available daily close · delayed"
-    return quote, quote_type
+            closes = hist["Close"].dropna()
+            if quote is None:
+                quote = float(closes.iloc[-1])
+                quote_type = "Latest available daily close · delayed"
+            if len(closes) >= 2 and float(closes.iloc[-2]) != 0:
+                change_pct = (float(closes.iloc[-1]) / float(closes.iloc[-2]) - 1) * 100
+    return quote, quote_type, change_pct
 
 @st.cache_data(ttl=900, show_spinner=False)
 def get_market_cards():
@@ -70,7 +78,7 @@ def get_market_cards():
         try:
             result[name] = market_snapshot(symbol)
         except Exception:
-            result[name] = (None, "Quote unavailable")
+            result[name] = (None, "Quote unavailable", None)
     return result
 
 df = pd.read_csv(DATA_FILE, parse_dates=["Date"])
@@ -104,13 +112,14 @@ st.subheader("Market Snapshot")
 quotes = get_market_cards()
 cols = st.columns(3)
 for col, name in zip(cols, ["WTI Crude", "Brent Crude", "US Dollar Index"]):
-    value, label = quotes[name]
+    value, label, change_pct = quotes[name]
     with col:
         if value is None:
             st.metric(name, "Unavailable")
         else:
             unit = "USD/bbl" if name != "US Dollar Index" else "Index"
-            st.metric(name, f"{value:,.2f} {unit}")
+            delta = None if change_pct is None else f"{'▲' if change_pct >= 0 else '▼'} {change_pct:+.2f}%"
+            st.metric(name, f"{value:,.2f} {unit}", delta=delta, delta_color="normal")
         st.caption(label)
 st.caption("Market quotes are sourced from Yahoo Finance through yfinance. Quote availability and delay depend on the provider.")
 
@@ -132,57 +141,57 @@ st.info(
 )
 
 st.divider()
-# Build one-session benchmark replay over the full dataset first, then filter to the latest 30 calendar days.
-# This ensures the first visible date can use the previous session's close.
+# Build the previous-close benchmark replay over the full dataset before applying the selected display window.
 df["Predicted_Close"] = df["WTI_Close"].shift(1)
 df["Absolute_Error_USD"] = (df["WTI_Close"] - df["Predicted_Close"]).abs()
 df["Absolute_Error_Pct"] = df["Absolute_Error_USD"] / df["WTI_Close"].abs() * 100
-period_start = latest_dataset_date - pd.Timedelta(days=30)
+
+st.subheader("Model Estimate vs Actual WTI Price")
+range_days = st.select_slider(
+    "Chart time range",
+    options=[30, 60, 90, 180, 365, 0],
+    value=90,
+    format_func=lambda x: "All available data" if x == 0 else f"Last {x} days"
+)
+period_start = df["Date"].min() if range_days == 0 else latest_dataset_date - pd.Timedelta(days=range_days)
 window = df[(df["Date"] >= period_start) & (df["Date"] <= latest_dataset_date)].copy()
 comparison = window.dropna(subset=["Predicted_Close"]).copy()
 
-st.subheader("Last 30 Days · Actual WTI Price")
-st.caption(f"{period_start.strftime('%d %b %Y')} – {latest_dataset_date.strftime('%d %b %Y')} · Daily close · USD per barrel")
-actual_fig = go.Figure()
-actual_fig.add_trace(go.Scatter(
-    x=window["Date"], y=window["WTI_Close"], mode="lines+markers",
-    name="Actual WTI Price", line=dict(color="#159447", width=3),
-    marker=dict(size=6),
-    hovertemplate="<b>%{x|%d %b %Y}</b><br>Actual: $%{y:,.2f}/bbl<extra></extra>"
-))
-actual_fig.update_layout(
-    height=390, margin=dict(l=10, r=10, t=25, b=10),
-    hovermode="x unified", xaxis_title="Trading date", yaxis_title="WTI close (USD/bbl)",
-    legend=dict(orientation="h", y=1.12), template="plotly_white",
-    xaxis=dict(rangeslider=dict(visible=True), type="date")
-)
-st.plotly_chart(actual_fig, use_container_width=True)
+if comparison.empty:
+    st.warning("Not enough historical rows for the selected comparison window.")
+else:
+    st.caption(
+        f"{comparison['Date'].min().strftime('%d %b %Y')} – "
+        f"{comparison['Date'].max().strftime('%d %b %Y')} · Daily WTI close · USD per barrel"
+    )
+    compare_fig = go.Figure()
+    compare_fig.add_trace(go.Scatter(
+        x=comparison["Date"], y=comparison["WTI_Close"], mode="lines+markers",
+        name="Actual WTI Close", line=dict(color="#159447", width=3.2),
+        marker=dict(size=5), connectgaps=False,
+        customdata=comparison[["Predicted_Close", "Absolute_Error_USD", "Absolute_Error_Pct"]].to_numpy(),
+        hovertemplate="<b>%{x|%d %b %Y}</b><br>Actual close: $%{y:,.2f}<br>Estimate: $%{customdata[0]:,.2f}<br>Absolute error: $%{customdata[1]:,.2f}<br>Error: %{customdata[2]:.2f}%<extra></extra>"
+    ))
+    compare_fig.add_trace(go.Scatter(
+        x=comparison["Date"], y=comparison["Predicted_Close"], mode="lines+markers",
+        name="Model Estimate · Previous-close baseline",
+        line=dict(color="#d93636", width=2.7, dash="dash"),
+        marker=dict(size=5),
+        customdata=comparison[["WTI_Close", "Absolute_Error_USD", "Absolute_Error_Pct"]].to_numpy(),
+        hovertemplate="<b>%{x|%d %b %Y}</b><br>Estimate: $%{y:,.2f}<br>Actual close: $%{customdata[0]:,.2f}<br>Absolute error: $%{customdata[1]:,.2f}<br>Error: %{customdata[2]:.2f}%<extra></extra>"
+    ))
+    compare_fig.update_layout(
+        height=540, margin=dict(l=12, r=16, t=35, b=12),
+        hovermode="x unified", xaxis_title="Trading date", yaxis_title="WTI close (USD/bbl)",
+        legend=dict(orientation="h", y=1.12, x=0),
+        template="plotly_white", plot_bgcolor="white", paper_bgcolor="white",
+        font=dict(size=13),
+        xaxis=dict(rangeslider=dict(visible=True, thickness=0.09), type="date"),
+        yaxis=dict(gridcolor="rgba(120,130,140,.16)", zeroline=False)
+    )
+    st.plotly_chart(compare_fig, use_container_width=True, config={"displaylogo": False, "scrollZoom": True})
 
-st.subheader("Last 30 Days · Benchmark Estimate vs Actual")
-st.caption("Green = actual closing price · Red = previous-close benchmark estimate. Hover over a point for the exact error.")
-compare_fig = go.Figure()
-compare_fig.add_trace(go.Scatter(
-    x=comparison["Date"], y=comparison["WTI_Close"], mode="lines+markers",
-    name="Actual Price", line=dict(color="#159447", width=3), marker=dict(size=6),
-    customdata=comparison[["Predicted_Close", "Absolute_Error_USD", "Absolute_Error_Pct"]].to_numpy(),
-    hovertemplate="<b>%{x|%d %b %Y}</b><br>Actual: $%{y:,.2f}<br>Estimate: $%{customdata[0]:,.2f}<br>Absolute error: $%{customdata[1]:,.2f}<br>Error: %{customdata[2]:.2f}%<extra></extra>"
-))
-compare_fig.add_trace(go.Scatter(
-    x=comparison["Date"], y=comparison["Predicted_Close"], mode="lines+markers",
-    name="Previous-close Estimate", line=dict(color="#d93636", width=2.5, dash="dash"),
-    marker=dict(size=6),
-    customdata=comparison[["WTI_Close", "Absolute_Error_USD", "Absolute_Error_Pct"]].to_numpy(),
-    hovertemplate="<b>%{x|%d %b %Y}</b><br>Estimate: $%{y:,.2f}<br>Actual: $%{customdata[0]:,.2f}<br>Absolute error: $%{customdata[1]:,.2f}<br>Error: %{customdata[2]:.2f}%<extra></extra>"
-))
-compare_fig.update_layout(
-    height=430, margin=dict(l=10, r=10, t=25, b=10),
-    hovermode="x unified", xaxis_title="Trading date", yaxis_title="WTI close (USD/bbl)",
-    legend=dict(orientation="h", y=1.12), template="plotly_white",
-    xaxis=dict(rangeslider=dict(visible=True), type="date")
-)
-st.plotly_chart(compare_fig, use_container_width=True)
-
-st.subheader("Prediction Details · Last 30 Days")
+st.subheader("Prediction Details · Selected Period")
 details = comparison[["Date", "Predicted_Close", "WTI_Close", "Absolute_Error_USD", "Absolute_Error_Pct"]].copy()
 details = details.rename(columns={
     "Date": "Trading Date", "Predicted_Close": "Predicted Price (USD)",
@@ -201,7 +210,7 @@ if not comparison.empty:
     e1, e2 = st.columns(2)
     e1.metric("30-day benchmark MAPE", f"{comparison['Absolute_Error_Pct'].mean():.2f}%")
     e2.metric("30-day mean absolute error", f"${comparison['Absolute_Error_USD'].mean():.2f}/bbl")
-    st.caption("These metrics describe the previous-close benchmark replay, not validated AI model accuracy. Changing the time window does not change the underlying errors.")
+    st.caption("These metrics describe the previous-close benchmark replay for the selected period, not validated AI model accuracy. Changing the display window does not change the underlying errors.")
 
 st.caption(
     f"Dataset last date: {latest_dataset_date.date()} · "
