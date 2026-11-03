@@ -236,8 +236,7 @@ def infer_recipes(base):
         if med_error <= limits[feature] and rel_error <= .05:
             chosen[feature] = name
             notes[feature] = f"Matched {name}; median absolute error={med_error:.6g}"
-        else:
-            chosen[feature] = None
+        else:            chosen[feature] = None
             notes[feature] = "Formula did not match historical values confidently."
     return chosen, notes
 
@@ -496,8 +495,7 @@ def compute_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
     return feat.loc[:, EXPANDED_FEATURES].replace([np.inf, -np.inf], np.nan)
 
 
-def _trees_model(horizon: int):
-    # Settings correspond to the best model candidates from prior validation:
+def _trees_model(horizon: int):    # Settings correspond to the best model candidates from prior validation:
     # h=5 ExtraTrees(depth=6, leaf=10); h=10/20 ExtraTrees(depth=3, leaf=30).    depth, leaf = (6, 10) if horizon == 5 else (3, 30)
     return Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
@@ -645,27 +643,39 @@ def train_hybrid_horizons(df: pd.DataFrame):
         residuals = y_test.copy()
         candidate_metrics = {}
         if h == 1:
-            selected, candidate_metrics, walk_forward_scores, walk_forward_zero_mae, factories = (
-                _evaluate_next_session_candidates(X_all, y_all, dates, target_dates)
+            X_selection = X_all.iloc[train_local].reset_index(drop=True)
+            y_selection = y_all[train_local]
+            dates_selection = dates.iloc[train_local].reset_index(drop=True)
+            target_selection = target_dates.iloc[train_local].reset_index(drop=True)
+            selected, candidate_metrics, walk_forward_scores, selection_zero_mae, factories = (
+                _evaluate_next_session_candidates(
+                    X_selection, y_selection, dates_selection, target_selection
+                )
             )
             if selected == "Zero-return baseline":
-                final_model = ZeroReturnBaseline().fit(X_all, y_all)
+                holdout_model = ZeroReturnBaseline().fit(X_all.iloc[train_local], y_all[train_local])
                 model_type = "Zero-return baseline (walk-forward selected)"
                 params = "Retained because no candidate cleared the validation threshold"
+                test_pred = holdout_model.predict(X_all.iloc[test_local])
                 predicted_return = 0.0
-                test_pred = np.zeros_like(y_test)
+                final_model = ZeroReturnBaseline().fit(X_all, y_all)
             else:
+                holdout_model = factories[selected]()
+                holdout_model.fit(X_all.iloc[train_local], y_all[train_local])
+                test_pred = np.asarray(holdout_model.predict(X_all.iloc[test_local]), dtype=float)
+                test_pred = np.clip(
+                    test_pred, np.quantile(y_all[train_local], 0.01),
+                    np.quantile(y_all[train_local], 0.99)
+                )
+                model_type = selected + " (walk-forward selected)"
+                params = "Selected on expanding folds inside training period; final holdout untouched"
                 final_model = factories[selected]()
                 final_model.fit(X_all, y_all)
-                model_type = selected + " (walk-forward selected)"
-                params = "Selected by 4-fold expanding walk-forward validation"
-                test_pred = np.asarray(final_model.predict(X_all.iloc[test_local]), dtype=float)
                 predicted_return = float(final_model.predict(latest_x)[0])
                 predicted_return = float(np.clip(
                     predicted_return, np.quantile(y_all, 0.01), np.quantile(y_all, 0.99)
                 ))
             test_mae = float(mean_absolute_error(y_test, test_pred))
-            zero_mae = walk_forward_zero_mae
             residuals = y_test - test_pred
         elif h == 4:
             final_model = ZeroReturnBaseline().fit(X_all, y_all)
