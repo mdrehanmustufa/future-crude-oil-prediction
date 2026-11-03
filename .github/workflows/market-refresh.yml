@@ -6,6 +6,7 @@ on:
       - main
       - integration-test
       - dashboard-ux-refresh
+      - expo-readiness-fixes
     paths-ignore:
       - "Final_Dataset_AI_dxy_fixed.csv"
       - "model_artifacts.joblib"
