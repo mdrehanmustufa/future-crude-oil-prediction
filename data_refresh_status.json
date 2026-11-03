@@ -1,5 +1,5 @@
 {
-  "last_successful_run_utc": "2026-11-03T16:28:44.617998+00:00",
+  "last_successful_run_utc": "2026-11-03T16:32:17.814433+00:00",
   "historical_source": "Final_Dataset_AI_dxy_fixed.csv",
   "dataset_rows": 3022,
   "latest_market_date": "2026-11-02",
@@ -17,12 +17,38 @@
   "feature_count": 64,
   "model_metrics": {
     "1": {
-      "model_type": "Zero-return baseline",
+      "model_type": "Zero-return baseline (walk-forward selected)",
       "holdout_mae_pp": 1.899510052998661,
       "zero_return_mae_pp": 1.899510052998661,
       "beats_zero_baseline": false,
       "training_rows": 2389,
-      "holdout_rows": 422
+      "holdout_rows": 422,
+      "candidate_walk_forward": {
+        "Historical-mean return": {
+          "pooled_mae": 0.01784702293687809,
+          "folds_beating_zero": 3,
+          "folds": 4,
+          "improvement_vs_zero_pct": 0.3080396082123881
+        },
+        "Historical-median return": {
+          "pooled_mae": 0.017828983654770047,
+          "folds_beating_zero": 3,
+          "folds": 4,
+          "improvement_vs_zero_pct": 0.408805512070517
+        },
+        "Ridge regression": {
+          "pooled_mae": 0.021124845353414495,
+          "folds_beating_zero": 0,
+          "folds": 4,
+          "improvement_vs_zero_pct": -18.00159912965444
+        },
+        "ExtraTrees shallow": {
+          "pooled_mae": 0.018053786415986095,
+          "folds_beating_zero": 1,
+          "folds": 4,
+          "improvement_vs_zero_pct": -0.8469236953372837
+        }
+      }
     },
     "4": {
       "model_type": "Zero-return baseline",
@@ -30,7 +56,8 @@
       "zero_return_mae_pp": 3.724233666814062,
       "beats_zero_baseline": false,
       "training_rows": 2383,
-      "holdout_rows": 422
+      "holdout_rows": 422,
+      "candidate_walk_forward": {}
     },
     "5": {
       "model_type": "ExtraTrees experimental",
@@ -38,7 +65,8 @@
       "zero_return_mae_pp": 4.207741130523845,
       "beats_zero_baseline": false,
       "training_rows": 2381,
-      "holdout_rows": 422
+      "holdout_rows": 422,
+      "candidate_walk_forward": {}
     },
     "10": {
       "model_type": "ExtraTrees experimental",
@@ -46,15 +74,17 @@
       "zero_return_mae_pp": 5.386564311163402,
       "beats_zero_baseline": false,
       "training_rows": 2375,
-      "holdout_rows": 422
+      "holdout_rows": 422,
+      "candidate_walk_forward": {}
     },
     "20": {
       "model_type": "ExtraTrees experimental",
-      "holdout_mae_pp": 7.555874104514635,
+      "holdout_mae_pp": 7.555874104514637,
       "zero_return_mae_pp": 7.438371796524327,
       "beats_zero_baseline": false,
       "training_rows": 2365,
-      "holdout_rows": 422
+      "holdout_rows": 422,
+      "candidate_walk_forward": {}
     }
   }
 }
