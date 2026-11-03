@@ -413,30 +413,49 @@ brent_date = state["brent_date"]
 dxy_close = state["dxy_close"]
 dxy_date = state["dxy_date"]
 
+# Saved-data fallbacks and previous closes for the market status cards.
+wti_saved = df[["Date", "WTI_Close"]].dropna().sort_values("Date")
+wti_saved_previous = float(wti_saved["WTI_Close"].iloc[-2]) if len(wti_saved) >= 2 else None
+
+brent_saved = (
+    df[["Date", "Brent_Close"]].dropna().sort_values("Date")
+    if "Brent_Close" in df.columns else pd.DataFrame()
+)
+brent_saved_previous = float(brent_saved["Brent_Close"].iloc[-2]) if len(brent_saved) >= 2 else None
+
+dxy_saved = (
+    df[["Date", "DXY_Close"]].dropna().sort_values("Date")
+    if "DXY_Close" in df.columns else pd.DataFrame()
+)
+dxy_saved_previous = float(dxy_saved["DXY_Close"].iloc[-2]) if len(dxy_saved) >= 2 else None
+
 market_inputs = {
-    "wti": resolve_market_reference("CL=F", current_close, feature_date.date()),
+    "wti": resolve_market_reference("CL=F", current_close, feature_date.date(), wti_saved_previous),
     "brent": resolve_market_reference(
         "BZ=F",
         brent_close if brent_close is not None else current_close,
-        brent_date.date() if brent_date is not None else feature_date.date()
+        brent_date.date() if brent_date is not None else feature_date.date(),
+        brent_saved_previous
     ),
     "dxy": resolve_market_reference(
         "DX-Y.NYB",
         dxy_close if dxy_close is not None else 100.0,
-        dxy_date.date() if dxy_date is not None else feature_date.date()
+        dxy_date.date() if dxy_date is not None else feature_date.date(),
+        dxy_saved_previous
     ),
 }
 
 scenario_idx = state["feature_idx"]
 global_production_reference = float(df.at[scenario_idx, "EIA_world_prod_lag3m"])
 gpr_reference = float(df.at[scenario_idx, "GPR_total_lag1m"])
+gpr_ladder, gpr_current_level, gpr_current_percentile = build_gpr_scenario_ladder(df, gpr_reference)
 
 latest_defaults = {
     "scenario_wti_price": float(market_inputs["wti"]["value"]),
     "scenario_brent_price": float(market_inputs["brent"]["value"]),
     "scenario_dxy_level": float(market_inputs["dxy"]["value"]),
     "scenario_global_production": global_production_reference,
-    "scenario_gpr_index": gpr_reference,
+    "scenario_gpr_level": int(gpr_current_level),
 }
 
 st.markdown(
