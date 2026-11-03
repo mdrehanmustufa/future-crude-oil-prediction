@@ -775,7 +775,9 @@ with market_tab:
         st.write("Brent: Yahoo Finance BZ=F; displayed as a benchmark, while the model uses a separate lagged Brent feature.")
         st.write("US crude inventory: stored historical EIA series; no EIA_API_KEY is currently configured.")
         st.write("US oil-rig count: historical source series carried forward, not a live daily value.")
-        st.write("GPR, TPU, commodities and global production: stored lagged dataset series; not live news feeds.")
+        st.write("GPR: Caldara–Iacoviello monthly newspaper-coverage index (total, threats and acts), stored with a one-month lag; it is not a live event feed.")
+        st.markdown("[Official GPR index, dataset and methodology](https://www.matteoiacoviello.com/gpr.htm)")
+        st.write("TPU, commodities and global production: stored lagged dataset series; not live news feeds.")
         st.markdown("**Model interpretation**")
         st.write("1 and 4 sessions use zero-return baselines. 5, 10 and 20 sessions use experimental ExtraTrees models.")
         st.write("The app reads saved model artifacts. It does not train models when a visitor opens the dashboard.")
@@ -882,7 +884,8 @@ with scenario_tab:
                 "3 = sanctions/trade restrictions · 4 = sustained regional conflict · "
                 "5 = major escalation or serious energy-supply threat. "
                 f"Latest stored GPR rank: P{gpr_current_percentile * 100:.0f}; "
-                f"current conditions are mapped to tier {gpr_current_level}. The underlying GPR series is one month lagged."
+                f"current conditions are mapped to tier {gpr_current_level}. The underlying GPR series is one month lagged. "
+                "GPR measures newspaper coverage share, not a literal event-severity rating."
             )
 
     with result_col:
