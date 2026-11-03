@@ -232,5 +232,5 @@ for h in (1, 4, 5, 10, 20):
         assert np.isfinite(row["absolute_error"]) and row["absolute_error"] >= 0
 
 print("PASS: Interactive backtest series persisted for every forecast horizon.")
-print("PASS: GPR 0–5 tiers change all three trained GPR features; actual model response is reported, never forced.")
+print("PASS: GPR 0–5 tiers map into all three trained GPR features; actual model response is reported, never forced.")
 print("PASS: Holdout points contain feature date, target date, actual close, estimated close and error.")
