@@ -741,18 +741,31 @@ with scenario_tab:
             )
 
         with st.container(border=True):
-            st.markdown("#### 3 · Geopolitical risk")
-            gpr_index = st.slider(
-                "Geopolitical Risk Index · GPR",
-                min_value=0.0,
-                max_value=float(gpr_max),
-                step=float(gpr_step),
-                key="scenario_gpr_index",
-                help="Adjusts the model's lagged GPR total, threats and acts features together."
+            st.markdown("#### 3 · Geopolitical event severity")
+            gpr_level = st.select_slider(
+                "Choose an event scenario · 0 to 5",
+                options=list(range(6)),
+                value=int(latest_defaults["scenario_gpr_level"]),
+                format_func=lambda level: f"{level} · {gpr_ladder[level]['label']}",
+                key="scenario_gpr_level",
+                help="These are illustrative scenario tiers. Each tier maps to a percentile of the model's historical GPR index distribution."
+            )
+            gpr_index = (
+                gpr_reference
+                if gpr_level == gpr_current_level
+                else gpr_ladder[gpr_level]["index_value"]
+            )
+            st.metric(
+                "Mapped GPR index input",
+                f"{gpr_index:,.2f}",
+                f"Historical distribution · P{gpr_ladder[gpr_level]['percentile'] * 100:.0f}"
             )
             st.caption(
-                f"Current trained-feature reference: {gpr_reference:,.3f} · "
-                "GPR source feature is lagged by one month."
+                "0 = calm conditions · 1 = routine diplomatic tension · 2 = direct military clash · "
+                "3 = sanctions/trade restrictions · 4 = sustained regional conflict · "
+                "5 = major escalation or serious energy-supply threat. "
+                f"Latest stored GPR rank: P{gpr_current_percentile * 100:.0f}; "
+                f"current conditions are mapped to tier {gpr_current_level}. The underlying GPR series is one month lagged."
             )
 
     with result_col:
@@ -771,7 +784,7 @@ with scenario_tab:
                     latest_defaults["scenario_dxy_level"],
                     latest_defaults["scenario_brent_price"],
                     latest_defaults["scenario_global_production"],
-                    latest_defaults["scenario_gpr_index"],
+                    gpr_reference,
                 )
                 scenario_x, scenario_close = make_scenario_features(
                     state, wti_price, dxy_level, brent_price,
@@ -819,6 +832,49 @@ with scenario_tab:
                     f"Reset/reference case: USD {reference_price:,.2f}/bbl · "
                     f"Changed scenario: USD {scenario_price:,.2f}/bbl."
                 )
+
+                # Test all six GPR levels against the same selected market assumptions.
+                # This reveals whether the fitted ExtraTrees model actually responds to GPR.
+                gpr_sensitivity_rows = []
+                for level in range(6):
+                    level_gpr = (
+                        gpr_reference
+                        if level == gpr_current_level
+                        else gpr_ladder[level]["index_value"]
+                    )
+                    level_x, level_close = make_scenario_features(
+                        state, wti_price, dxy_level, brent_price,
+                        global_production, level_gpr
+                    )
+                    level_return = float(models[chosen_horizon]["pipeline"].predict(level_x)[0])
+                    level_price = level_close * (1.0 + level_return)
+                    gpr_sensitivity_rows.append({
+                        "Level": level,
+                        "Scenario": gpr_ladder[level]["label"],
+                        "Mapped GPR index": level_gpr,
+                        "Estimated WTI close": level_price,
+                    })
+                gpr_sensitivity_df = pd.DataFrame(gpr_sensitivity_rows)
+                st.markdown("**GPR impact check · other inputs held constant**")
+                st.dataframe(
+                    gpr_sensitivity_df.style.format({
+                        "Mapped GPR index": "{:,.2f}",
+                        "Estimated WTI close": "USD {:,.2f}",
+                    }),
+                    width="stretch", hide_index=True
+                )
+                distinct_gpr_outputs = gpr_sensitivity_df["Estimated WTI close"].round(4).nunique()
+                if distinct_gpr_outputs == 1:
+                    st.warning(
+                        "The GPR input changes across all six levels, but this trained model gives the same WTI estimate. "
+                        "That means the current fitted trees are not using GPR splits for this selected horizon and market setup. "
+                        "The dashboard will not invent a price movement; this is a model limitation to investigate."
+                    )
+                else:
+                    st.success(
+                        f"The model produces {distinct_gpr_outputs} distinct WTI estimates across the six GPR tiers. "
+                        "Tree-based models can still remain flat between some adjacent tiers."
+                    )
 
                 graph_horizons = [item["horizon"] for item in horizon_results]
                 reference_prices = [item["reference_price"] for item in horizon_results]
