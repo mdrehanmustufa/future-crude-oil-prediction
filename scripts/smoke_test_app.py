@@ -47,17 +47,29 @@ app_test = AppTest.from_file(str(APP), default_timeout=90)
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert len(app_test.tabs) == 2, f"Expected two main tabs, found {len(app_test.tabs)}"
-assert len(app_test.slider) == 11, f"Expected 11 WTI/DXY/macro sliders, found {len(app_test.slider)}"
-assert len(app_test.number_input) == 2
-assert len(app_test.selectbox) == 2
+assert len(app_test.slider) == 6, f"Expected six simple scenario sliders, found {len(app_test.slider)}"
+assert len(app_test.number_input) == 0
+assert len(app_test.selectbox) == 1
+assert len(app_test.button) == 1, "Expected a single Reset to latest data button."
 
-app_test.slider[0].set_value(1.0)
-app_test.slider[1].set_value(1.0)
-app_test.number_input[0].set_value(1000)
-app_test.number_input[1].set_value(5)
+initial_slider_values = [float(item.value) for item in app_test.slider]
+app_test.slider[0].set_value(initial_slider_values[0] * 1.05)
+app_test.slider[1].set_value(initial_slider_values[1] * 1.05)
+app_test.slider[2].set_value(initial_slider_values[2] * 1.02)
+app_test.slider[3].set_value(initial_slider_values[3] + 5.0)
+app_test.slider[4].set_value(initial_slider_values[4] + 5)
+app_test.slider[5].set_value(initial_slider_values[5] + 5.0)
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert not app_test.error, [error.value for error in app_test.error]
+
+app_test.button[0].click()
+app_test.run(timeout=120)
+assert not app_test.exception, [exc.message for exc in app_test.exception]
+reset_slider_values = [float(item.value) for item in app_test.slider]
+assert np.allclose(reset_slider_values, initial_slider_values), (
+    f"Reset did not restore latest-reference values: {reset_slider_values} vs {initial_slider_values}"
+)
 
 # Extract the exact scenario function from app.py, rather than duplicating its logic.
 tree = ast.parse(APP.read_text(encoding="utf-8"))
