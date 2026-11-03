@@ -148,11 +148,6 @@ assert gpr_zero_mult == 1.0 and gpr_zero_impact == 0.0
 assert gpr_five_mult > gpr_zero_mult and np.isclose(gpr_five_impact, 0.125)
 assert low_supply_mult > 1.0 and gpr_five_mult > 1.0
 
-# The underlying scenario feature builder accepts out-of-history prototype values.
-low_supply_features, _ = scenario_function(
-    state if "state" in locals() else {}, 1.0, 1.0, 1.0, 64725.0, 1.0
-) if False else (None, None)
-
 baseline_x, baseline_close = scenario_function(
     state, base_wti, base_dxy, base_brent, base_global_production, base_gpr
 )
@@ -163,6 +158,11 @@ assert np.allclose(
     rtol=1e-6, atol=1e-8, equal_nan=True
 )
 assert np.isclose(baseline_close, base_wti)
+low_supply_features, _ = scenario_function(
+    state, base_wti, base_dxy, base_brent, 64725.0, base_gpr
+)
+assert low_supply_features.shape == (1, len(fe.EXPANDED_FEATURES))
+assert np.isfinite(low_supply_features.to_numpy(dtype=float)).all()
 
 scenario_specs = [
     ("WTI", scenario_function(state, base_wti * 1.10, base_dxy, base_brent, base_global_production, base_gpr), ["WTI_"]),
