@@ -5,8 +5,8 @@ A Streamlit research dashboard explaining WTI and Brent benchmarks, providing mu
 ## Dashboard guide
 
 1. **Market snapshot** — saved daily WTI and Brent futures closes, source dates, and Brent-minus-WTI spread when both dates match.
-2. **Market forecast** — next-session WTI closing-price reference estimate plus 1/4/5/10/20 observed-trading-session outlook.
-3. **What-if analysis** — 13 controls across WTI, DXY, US crude inventories, US oil rigs, six commodity markets, GPR, TPU and global oil production. All changes are applied to a temporary copy of the latest feature row.
+2. **Scenario Lab** — primary Expo view, with presets and 13 adjustable inputs covering WTI, DXY, US commercial crude inventories, US oil rigs, six commodity markets, GPR, TPU and global oil production.
+3. **Forecast & Backtest** — multi-horizon estimates, chronological holdout diagnostics and a 90-day previous-close benchmark replay.
 
 The dashboard labels saved daily futures closes and model estimates explicitly; it does not call them live quotes or tomorrow's opening price. The target is WTI future close, not open.
 
@@ -25,7 +25,7 @@ The WTI model now uses 64 numeric features across eight families:
 
 The dataset contains the historical lagged columns for these added macro/commodity factors. Their values are carried forward on appended WTI dates unless their own source is refreshed. GPR and TPU are lagged historical indices, not live news sentiment. The Brent card uses Yahoo continuous futures BZ=F for a visible benchmark quote; the model's CMD_brent_lag1 is a separate stored historical lagged feature.
 
-OPEC+ policy, current war/peace headlines outside the lagged GPR series, tanker/shipping disruptions, weather, refinery utilization and interest rates are not separate trained inputs in this version. A UI slider alone is not a valid model feature; each new factor requires historical data, date alignment, lag policy, retraining and out-of-sample validation.
+Strategic Petroleum Reserve (SPR) and IEA emergency-stock release volumes, OPEC+ policy, current war/peace headlines outside the lagged GPR series, tanker/shipping disruptions, weather, refinery utilization and interest rates are not separate trained inputs in this version. US commercial crude inventory is not the same as strategic emergency stocks. A UI slider alone is not a valid model feature; each new factor requires historical data, date alignment, lag policy, retraining and out-of-sample validation.
 
 ## Scenario controls and units
 
