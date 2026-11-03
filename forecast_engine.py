@@ -808,6 +808,9 @@ def train_hybrid_horizons(df: pd.DataFrame):
             "active_features": [],
             "candidate_metrics": candidate_metrics,
             "target_cutoff": feature_date,
+            "backtest_method": (
+                "expanding_window_21" if h in (5, 10, 20) else "baseline_holdout"
+            ),
             "holdout_backtest": holdout_backtest,
         }
         diagnostics.append({
