@@ -47,7 +47,7 @@ app_test = AppTest.from_file(str(APP), default_timeout=90)
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert len(app_test.tabs) == 2, f"Expected two main tabs, found {len(app_test.tabs)}"
-assert len(app_test.slider) == 6, f"Expected six simple scenario sliders, found {len(app_test.slider)}"
+assert len(app_test.slider) == 5, f"Expected five global scenario sliders, found {len(app_test.slider)}"
 assert len(app_test.number_input) == 0
 assert len(app_test.selectbox) == 1
 assert len(app_test.button) == 1, "Expected a single Reset to latest data button."
@@ -56,9 +56,8 @@ initial_slider_values = [float(item.value) for item in app_test.slider]
 app_test.slider[0].set_value(initial_slider_values[0] * 1.05)
 app_test.slider[1].set_value(initial_slider_values[1] * 1.05)
 app_test.slider[2].set_value(initial_slider_values[2] * 1.02)
-app_test.slider[3].set_value(initial_slider_values[3] + 5.0)
-app_test.slider[4].set_value(initial_slider_values[4] + 5)
-app_test.slider[5].set_value(initial_slider_values[5] + 5.0)
+app_test.slider[3].set_value(initial_slider_values[3] * 1.05)
+app_test.slider[4].set_value(initial_slider_values[4] * 1.05)
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert not app_test.error, [error.value for error in app_test.error]
@@ -114,18 +113,16 @@ assert np.isclose(
     rtol=1e-5, atol=0.01
 )
 
-# Use the latest saved feature-row levels as a test baseline; web reference values
-# are separately shown as current defaults in the user interface.
+# Use the latest saved feature-row levels as the test baseline.
 idx = state["feature_idx"]
 base_wti = float(df.loc[idx, "WTI_Close"])
 base_dxy = float(df.loc[idx, "DXY_Close"])
-base_inventory_mmbbl = float(df.loc[idx, "INV_US_Crude_Stocks_kbbl"]) / 1000.0
-base_rigs = float(df.loc[idx, "RIG_US_Oil_Rigs"])
 base_brent = float(df.loc[idx, "CMD_brent_lag1"])
+base_global_production = float(df.loc[idx, "EIA_world_prod_lag3m"])
 base_gpr = float(df.loc[idx, "GPR_total_lag1m"])
 
 baseline_x, baseline_close = scenario_function(
-    state, base_wti, base_dxy, base_inventory_mmbbl, base_rigs, base_brent, base_gpr
+    state, base_wti, base_dxy, base_brent, base_global_production, base_gpr
 )
 saved_latest_x = state["models"][1]["latest_x"].loc[:, state["feature_names"]]
 assert np.allclose(
@@ -136,12 +133,11 @@ assert np.allclose(
 assert np.isclose(baseline_close, base_wti)
 
 scenario_specs = [
-    ("WTI", scenario_function(state, base_wti * 1.10, base_dxy, base_inventory_mmbbl, base_rigs, base_brent, base_gpr), ["WTI_"]),
-    ("Brent", scenario_function(state, base_wti, base_dxy, base_inventory_mmbbl, base_rigs, base_brent * 1.15, base_gpr), ["CMD_brent_lag1"]),
-    ("DXY", scenario_function(state, base_wti, base_dxy * 1.05, base_inventory_mmbbl, base_rigs, base_brent, base_gpr), ["DXY_"]),
-    ("Commercial crude inventory", scenario_function(state, base_wti, base_dxy, base_inventory_mmbbl + 20.0, base_rigs, base_brent, base_gpr), ["INV_US_Crude_Stocks_kbbl"]),
-    ("US oil rig count", scenario_function(state, base_wti, base_dxy, base_inventory_mmbbl, base_rigs + 50, base_brent, base_gpr), ["RIG_US_Oil_Rigs"]),
-    ("GPR", scenario_function(state, base_wti, base_dxy, base_inventory_mmbbl, base_rigs, base_brent, base_gpr * 1.5), ["GPR_"]),
+    ("WTI", scenario_function(state, base_wti * 1.10, base_dxy, base_brent, base_global_production, base_gpr), ["WTI_"]),
+    ("Brent", scenario_function(state, base_wti, base_dxy, base_brent * 1.15, base_global_production, base_gpr), ["CMD_brent_lag1"]),
+    ("DXY", scenario_function(state, base_wti, base_dxy * 1.05, base_brent, base_global_production, base_gpr), ["DXY_"]),
+    ("Global oil production", scenario_function(state, base_wti, base_dxy, base_brent, base_global_production * 1.15, base_gpr), ["EIA_world_prod_lag3m"]),
+    ("GPR", scenario_function(state, base_wti, base_dxy, base_brent, base_global_production, base_gpr * 1.5), ["GPR_"]),
 ]
 sensitivity_predictions = {h: [] for h in (5, 10, 20)}
 for label, (features, scenario_close), expected_prefixes in scenario_specs:
@@ -179,8 +175,8 @@ for h in (5, 10, 20):
     assert moved, f"{h}-session model output did not respond to any non-WTI scenario shock."
 
 print("PASS: Next-session walk-forward selector handles signal and no-signal test data.")
-print("PASS: Streamlit app renders two tabs, six scenario sliders, and the reset button.")
+print("PASS: Streamlit app renders two tabs, five market/global scenario sliders, and the reset button.")
 print("PASS: Reset button restores latest-reference control values.")
 print("PASS: Reset scenario levels reproduce the saved 64-feature baseline row.")
-print("PASS: WTI, Brent, DXY, commercial inventory, oil rigs and GPR levels each update their mapped trained features.")
+print("PASS: WTI, Brent, DXY, global oil production and GPR levels each update their mapped trained features.")
 print("PASS: All 5/10/20-session scenario predictions remain finite and at least one non-WTI driver changes each horizon.")
