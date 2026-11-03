@@ -47,27 +47,33 @@ app_test = AppTest.from_file(str(APP), default_timeout=90)
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert len(app_test.tabs) == 2, f"Expected two main tabs, found {len(app_test.tabs)}"
-assert len(app_test.slider) == 5, f"Expected five global scenario sliders, found {len(app_test.slider)}"
+assert len(app_test.slider) == 4, f"Expected four numeric market/global sliders plus the GPR tier selector, found {len(app_test.slider)}"
 assert len(app_test.number_input) == 0
-assert len(app_test.selectbox) == 1
+assert len(app_test.selectbox) == 2
 assert len(app_test.button) == 1, "Expected a single Reset to latest data button."
+assert len(app_test.select_slider) == 2, "Expected a backtest range selector and 0–5 GPR severity selector."
 
 initial_slider_values = [float(item.value) for item in app_test.slider]
+initial_gpr_level = int(app_test.select_slider[-1].value)
 app_test.slider[0].set_value(initial_slider_values[0] * 1.05)
 app_test.slider[1].set_value(initial_slider_values[1] * 1.05)
 app_test.slider[2].set_value(initial_slider_values[2] * 1.02)
 app_test.slider[3].set_value(initial_slider_values[3] * 1.05)
-app_test.slider[4].set_value(initial_slider_values[4] * 1.05)
+app_test.select_slider[-1].set_value(5)
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert not app_test.error, [error.value for error in app_test.error]
 
+# Exercise the highest GPR event tier and verify the app recalculates without error.
 app_test.button[0].click()
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 reset_slider_values = [float(item.value) for item in app_test.slider]
 assert np.allclose(reset_slider_values, initial_slider_values), (
     f"Reset did not restore latest-reference values: {reset_slider_values} vs {initial_slider_values}"
+)
+assert int(app_test.select_slider[-1].value) == initial_gpr_level, (
+    "Reset did not restore the current GPR severity tier."
 )
 
 # Extract the exact scenario function from app.py, rather than duplicating its logic.
@@ -137,8 +143,36 @@ scenario_specs = [
     ("Brent", scenario_function(state, base_wti, base_dxy, base_brent * 1.15, base_global_production, base_gpr), ["CMD_brent_lag1"]),
     ("DXY", scenario_function(state, base_wti, base_dxy * 1.05, base_brent, base_global_production, base_gpr), ["DXY_"]),
     ("Global oil production", scenario_function(state, base_wti, base_dxy, base_brent, base_global_production * 1.15, base_gpr), ["EIA_world_prod_lag3m"]),
-    ("GPR", scenario_function(state, base_wti, base_dxy, base_brent, base_global_production, base_gpr * 1.5), ["GPR_"]),
 ]
+gpr_history = pd.to_numeric(df["GPR_total_lag1m"], errors="coerce").dropna()
+gpr_levels = [
+    float(gpr_history.quantile(q))
+    for q in (0.05, 0.25, 0.50, 0.70, 0.85, 0.97)
+]
+gpr_feature_rows = []
+for level, gpr_value in enumerate(gpr_levels):
+    features, close_value = scenario_function(
+        state, base_wti, base_dxy, base_brent, base_global_production, gpr_value
+    )
+    assert features.shape == (1, len(fe.EXPANDED_FEATURES))
+    assert np.isfinite(features.to_numpy(dtype=float)).all()
+    gpr_cols = ["GPR_total_lag1m", "GPR_threats_lag1m", "GPR_acts_lag1m"]
+    assert not np.allclose(
+        features[gpr_cols].to_numpy(dtype=float),
+        baseline_x[gpr_cols].to_numpy(dtype=float),
+        rtol=1e-9, atol=1e-12
+    ), f"GPR level {level} did not alter the three trained GPR features."
+    gpr_feature_rows.append((level, gpr_value, features))
+# All six levels must update the GPR feature family when they differ from the current observation.
+assert any(
+    not np.allclose(
+        features[["GPR_total_lag1m", "GPR_threats_lag1m", "GPR_acts_lag1m"]].to_numpy(dtype=float),
+        baseline_x[["GPR_total_lag1m", "GPR_threats_lag1m", "GPR_acts_lag1m"]].to_numpy(dtype=float),
+        rtol=1e-9, atol=1e-12
+    )
+    for _, _, features in gpr_feature_rows
+), "None of the six GPR tiers changed the trained GPR features."
+
 sensitivity_predictions = {h: [] for h in (5, 10, 20)}
 for label, (features, scenario_close), expected_prefixes in scenario_specs:
     assert features.shape == (1, len(fe.EXPANDED_FEATURES)), f"{label} feature shape mismatch."
@@ -179,4 +213,24 @@ print("PASS: Streamlit app renders two tabs, five market/global scenario sliders
 print("PASS: Reset button restores latest-reference control values.")
 print("PASS: Reset scenario levels reproduce the saved 64-feature baseline row.")
 print("PASS: WTI, Brent, DXY, global oil production and GPR levels each update their mapped trained features.")
-print("PASS: All 5/10/20-session scenario predictions remain finite and at least one non-WTI driver changes each horizon.")
+# Print the actual GPR sensitivity diagnostics. A flat prediction is a model finding,
+# not a reason to fabricate a price response.
+for h in (5, 10, 20):
+    gpr_predictions = [
+        float(state["models"][h]["pipeline"].predict(features)[0])
+        for _, _, features in gpr_feature_rows
+    ]
+    distinct = len(np.unique(np.round(gpr_predictions, 8)))
+    print(f"INFO: GPR 0–5 sensitivity at {h} sessions: {distinct} distinct model returns.")
+
+for h in (1, 4, 5, 10, 20):
+    rows = state["models"][h].get("holdout_backtest", [])
+    assert len(rows) >= 30, f"{h}-session holdout backtest rows missing."
+    for row in rows[:5]:
+        assert pd.Timestamp(row["target_date"]) > pd.Timestamp(row["feature_date"])
+        assert row["actual_close"] > 0 and row["estimated_close"] > 0
+        assert np.isfinite(row["absolute_error"]) and row["absolute_error"] >= 0
+
+print("PASS: Interactive backtest series persisted for every forecast horizon.")
+print("PASS: GPR 0–5 tiers map into all three trained GPR features; actual model response is reported, never forced.")
+print("PASS: Holdout points contain feature date, target date, actual close, estimated close and error.")

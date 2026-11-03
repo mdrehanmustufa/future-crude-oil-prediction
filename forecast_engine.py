@@ -706,6 +706,31 @@ def train_hybrid_horizons(df: pd.DataFrame):
         predicted_price = current_close * (1 + predicted_return)
         low_price = max(.01, current_close * (1 + predicted_return + q10))
         high_price = max(low_price, current_close * (1 + predicted_return + q90))
+
+        # Preserve the untouched chronological holdout predictions for an honest
+        # point-by-point backtest chart. Each model was fit only on rows before test_start.
+        test_feature_dates = dates.iloc[test_local].reset_index(drop=True)
+        test_target_dates = target_dates.iloc[test_local].reset_index(drop=True)
+        test_reference_close = close.iloc[idx[test_local]].astype(float).to_numpy()
+        test_actual_close = test_reference_close * (1.0 + y_test)
+        test_estimated_close = test_reference_close * (1.0 + np.asarray(test_pred, dtype=float))
+        holdout_backtest = []
+        for j in range(len(test_local)):
+            actual_value = float(test_actual_close[j])
+            estimated_value = float(test_estimated_close[j])
+            error_value = estimated_value - actual_value
+            holdout_backtest.append({
+                "feature_date": pd.Timestamp(test_feature_dates.iloc[j]).date().isoformat(),
+                "target_date": pd.Timestamp(test_target_dates.iloc[j]).date().isoformat(),
+                "reference_close": float(test_reference_close[j]),
+                "actual_close": actual_value,
+                "estimated_close": estimated_value,
+                "actual_return_pct": float(y_test[j] * 100.0),
+                "estimated_return_pct": float(test_pred[j] * 100.0),
+                "absolute_error": float(abs(error_value)),
+                "absolute_error_pct": float(abs(error_value) / max(abs(actual_value), 1e-12) * 100.0),
+            })
+
         models[h] = {
             "pipeline": final_model,
             "latest_x": latest_x.copy(),
@@ -727,6 +752,7 @@ def train_hybrid_horizons(df: pd.DataFrame):
             "active_features": [],
             "candidate_metrics": candidate_metrics,
             "target_cutoff": feature_date,
+            "holdout_backtest": holdout_backtest,
         }
         diagnostics.append({
             "Horizon sessions": h,

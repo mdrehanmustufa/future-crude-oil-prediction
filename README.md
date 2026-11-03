@@ -6,9 +6,9 @@ A Streamlit research dashboard explaining WTI and Brent benchmarks, providing mu
 
 1. **Global market overview** — latest completed daily WTI, Brent and DXY closes from Yahoo Finance when available, with saved-dataset fallback and source dates.
 2. **What-if Scenario Analysis** — five simple absolute-level controls: WTI, Brent, DXY, the existing EIA world-oil-production feature, and GPR. A Reset button restores the current market references and saved lagged global inputs.
-3. **Forecast & Backtest** — multi-horizon estimates, chronological holdout diagnostics and the 90-day previous-close benchmark replay.
+3. **Forecast & Backtest** — four market/model status cards, multi-horizon estimates and a point-by-point interactive chronological holdout chart (actual close vs the estimate saved from the model that was fit before the holdout).
 
-The dashboard title is **Crude Oil Intelligence**. The main page keeps the market overview first, then places the scenario controls beside the model result and a compact chart comparing reset/reference and changed-scenario WTI estimates at 5, 10 and 20 trading sessions.
+The dashboard title is **Crude Oil Intelligence**. The main page keeps the market overview first, places scenario controls beside the model result, and includes a compact 5/10/20-session scenario comparison chart. In Forecast & Backtest, the top status cards show WTI price/change, data source, loaded model status and the next scheduled GitHub Actions refresh.
 
 All 64 trained model features still go into the saved models. The visible scenario sliders expose only features that can be mapped honestly to existing trained inputs. US commercial inventory and US oil-rig history remain in the model's feature row at their saved values; they are not relabelled as global data.
 
@@ -20,7 +20,16 @@ All 64 trained model features still go into the saved models. The visible scenar
 
 Global observed inventories and worldwide rig-count reports are available from external sources, but neither is currently a separately trained input in this model. The IEA publishes a global observed oil-inventories series, and Baker Hughes publishes a worldwide rig-count report. Those series need historical alignment, source-lag handling, inclusion in the training feature matrix, retraining and chronological validation before they can control scenario outputs. See [IEA global observed inventories](https://www.iea.org/data-and-statistics/charts/global-observed-oil-inventories-2021-2026) and [Baker Hughes Worldwide Rig Count](https://rigcount.bakerhughes.com/intl-rig-count/).
 
-The visible controls use **absolute levels**, not percentage shocks. GPR scales the stored total, threats and acts feature trio proportionally. Small changes may not move an ExtraTrees estimate when a new value remains inside the same tree-leaf regions.
+The visible controls use **absolute levels**, not percentage shocks. The geopolitical control is an event-scenario ladder from 0 to 5:
+
+- **0:** Calm / no major escalation
+- **1:** Routine diplomatic tension
+- **2:** Direct military clash between countries
+- **3:** Sanctions / trade restrictions
+- **4:** Sustained regional conflict
+- **5:** Major escalation / serious energy-supply threat
+
+Each level maps to a percentile of the model's historical GPR distribution (P5, P25, P50, P70, P85, P97); the selected index is applied proportionally to the stored total, threats and acts GPR features. These labels are illustrative what-if scenarios, not an official conflict classification. The Caldara–Iacoviello GPR index is a news-coverage measure based on the share of newspaper articles about geopolitical risk, with separate threats and acts components; it is not a literal 0–5 war scale. See the [official GPR index and methodology](https://www.matteoiacoviello.com/gpr.htm). The latest observed GPR is preserved as the reset reference. ExtraTrees can return the same estimate across several tiers when inputs fall within the same tree leaves; the app displays a six-tier GPR sensitivity table and explicitly warns when output is flat rather than forcing a price movement.
 
 ## Trained model inputs
 
@@ -53,7 +62,10 @@ Scenarios are conditional feature experiments, not causal economic simulations. 
 
 - 1 and 4 sessions use a zero-return baseline.
 - 5, 10 and 20 sessions use experimental ExtraTrees pipelines.
-- The current chronological holdout must be checked after retraining; extra inputs do not guarantee better accuracy.
+- The current chronological holdout has not shown a reliable improvement over the zero-return benchmark.
+- The Forecast & Backtest chart uses stored predictions from the chronological holdout. The model used for those predictions was fit only on data before the holdout period; this is not a full daily retraining walk-forward simulation.
+- GPR is a monthly lagged news-based index, not a live event detector. The 0–5 event ladder maps illustrative scenario labels to empirical percentiles of the training-set GPR distribution. It does not claim that a specific war or sanction always corresponds to one exact GPR number.
+- ExtraTrees is piecewise constant; a changed GPR input may produce no change in the model estimate. The app reports this instead of fabricating a movement.
 - The next-session estimate is a closing-price reference based on the dataset target; it is not an opening-price prediction.
 - Indicative residual bands are not calibrated confidence intervals.
 - Forecasts are for research and education, not trading advice.
