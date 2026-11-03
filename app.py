@@ -69,6 +69,12 @@ div[data-testid="stTabs"] button[aria-selected="true"] {color:#222d36; border-bo
 div[data-testid="stMetric"] {background:#fff; border:1px solid #e5e6e7;
     border-radius:12px; padding:.75rem 1rem; box-shadow:0 3px 12px rgba(20,30,40,.035);}
 div[data-testid="stDataFrame"] {background:#fff; border:1px solid #e8e8e8; border-radius:12px;}
+div[data-baseweb="select"] > div,
+div[data-baseweb="input"] > div,
+div[data-testid="stNumberInput"] input {
+    background:#fff !important; color:#202a35 !important; border-color:#d9dee3 !important;
+}
+div[data-testid="stNumberInput"] button {background:#f7f7f5 !important; color:#46515b !important;}
 h1, h2, h3, h4 {color:#1f2b35 !important;}
 .stButton > button {border-radius:9px; border-color:#c7b17f;}
 </style>
