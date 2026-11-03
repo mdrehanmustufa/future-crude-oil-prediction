@@ -18,7 +18,7 @@ MODEL_FILE = ROOT / "model_artifacts.joblib"
 STATUS_FILE = ROOT / "data_refresh_status.json"
 
 st.set_page_config(
-    page_title="Crude Oil Market Intelligence",
+    page_title="Crude Oil Scenario Intelligence",
     page_icon="🛢️",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -415,7 +415,7 @@ labels = {
     20: "20 trading sessions"
 }
 SCENARIO_HORIZONS = [5, 10, 20]
-scenario_tab, market_tab = st.tabs(["01 · Scenario Lab", "02 · Forecast & Evaluation"])
+scenario_tab, market_tab = st.tabs(["01 · Scenario Lab", "02 · Forecast & Backtest"])
 
 with market_tab:
     st.subheader("Next trading session · WTI reference estimate")
