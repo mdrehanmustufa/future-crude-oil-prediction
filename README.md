@@ -20,7 +20,12 @@ All 64 trained model features still go into the saved models. The visible scenar
 
 Global observed inventories and worldwide rig-count reports are available from external sources, but neither is currently a separately trained input in this model. The IEA publishes a global observed oil-inventories series, and Baker Hughes publishes a worldwide rig-count report. Those series need historical alignment, source-lag handling, inclusion in the training feature matrix, retraining and chronological validation before they can control scenario outputs. See [IEA global observed inventories](https://www.iea.org/data-and-statistics/charts/global-observed-oil-inventories-2021-2026) and [Baker Hughes Worldwide Rig Count](https://rigcount.bakerhughes.com/intl-rig-count/).
 
-The visible controls use **absolute levels**, not percentage shocks. The geopolitical control is an event-scenario ladder from 0 to 5:
+The visible controls use **absolute levels**, not percentage shocks.
+
+- **Global oil production** is constrained to the 1st–99th percentile of positive values actually observed for the trained `EIA_world_prod_lag3m` feature. This matters because ExtraTrees is a tree ensemble and does not reliably extrapolate outside its training support. In the current dataset, 64,725 is below the positive historical minimum (about 70,010), so it is not presented as a reliable model scenario. The feature is lagged by three months, not a live supply feed.
+- **Estimated cumulative price change** is the model's predicted return over the selected 5/10/20 trading-session horizon, measured from the scenario's WTI reference price. It is not investment profit or a guaranteed return.
+
+The geopolitical control is an event-scenario ladder from 0 to 5:
 
 - **0:** Calm / no major escalation
 - **1:** Routine diplomatic tension
@@ -29,7 +34,9 @@ The visible controls use **absolute levels**, not percentage shocks. The geopoli
 - **4:** Sustained regional conflict
 - **5:** Major escalation / serious energy-supply threat
 
-Each level maps to a percentile of the model's historical GPR distribution (P5, P25, P50, P70, P85, P97); the selected index is applied proportionally to the stored total, threats and acts GPR features. These labels are illustrative what-if scenarios, not an official conflict classification. The Caldara–Iacoviello GPR index is a news-coverage measure based on the share of newspaper articles about geopolitical risk, with separate threats and acts components; it is not a literal 0–5 war scale. See the [official GPR index and methodology](https://www.matteoiacoviello.com/gpr.htm). The latest observed GPR is preserved as the reset reference. ExtraTrees can return the same estimate across several tiers when inputs fall within the same tree leaves; the app displays a six-tier GPR sensitivity table and explicitly warns when output is flat rather than forcing a price movement.
+Each level maps to a percentile of the model's historical GPR distribution (P5, P25, P50, P70, P85, P97); the selected index is applied proportionally to the stored total, threats and acts GPR features. These labels are illustrative what-if scenarios, not an official conflict classification. The Caldara–Iacoviello GPR index is a news-coverage measure based on the share of newspaper articles about geopolitical risk, with separate threats and acts components; it is not a literal 0–5 war scale. See the [official GPR index and methodology](https://www.matteoiacoviello.com/gpr.htm). The latest observed GPR is preserved as the reset reference. ExtraTrees can return the same estimate across several tiers when inputs fall within the same tree leaves; the app displays the dollar and percentage change from level 0 and warns when the full-ladder response is below 0.10%, rather than forcing a price movement.
+
+The current 64-feature model uses a generic monthly GPR index lagged by one month. It does **not** yet include an oil-specific event/supply disruption feature. A useful research extension is the [AI-GPR daily dataset](https://www.matteoiacoviello.com/ai_gpr.html), which provides separate **Oil Threats GPR** and **Oil Acts GPR** series. Those features must be historically aligned and added to training, then pass chronological validation before being treated as model inputs.
 
 ## Trained model inputs
 
