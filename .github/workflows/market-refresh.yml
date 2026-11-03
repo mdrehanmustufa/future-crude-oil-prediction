@@ -7,6 +7,7 @@ on:
       - integration-test
       - dashboard-ux-refresh
       - next-session-forecast-validation
+      - feature/simple-current-reference-scenarios
     paths-ignore:
       - "Final_Dataset_AI_dxy_fixed.csv"
       - "model_artifacts.joblib"
@@ -50,6 +51,7 @@ jobs:
           python -m py_compile app.py forecast_engine.py scripts/refresh_and_train.py scripts/smoke_test_app.py
 
       - name: Refresh verified market data and retrain models
+        if: github.ref_name != 'feature/simple-current-reference-scenarios'
         env:
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
         run: python scripts/refresh_and_train.py
@@ -58,6 +60,7 @@ jobs:
         run: python scripts/smoke_test_app.py
 
       - name: Commit refreshed dataset, models and metadata to this branch
+        if: github.ref_name != 'feature/simple-current-reference-scenarios'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
