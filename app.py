@@ -549,24 +549,6 @@ with market_tab:
     else:
         st.info("There are not enough historical observations to display the benchmark replay.")
 
-    with st.expander("Historical benchmark trend"):
-        history = df[["Date", "WTI_Close"]].dropna().tail(252)
-        fig, ax = plt.subplots(figsize=(12, 4))
-        ax.plot(history["Date"], history["WTI_Close"], label="WTI close", linewidth=1.8)
-        if "Brent_Close" in df.columns:
-            brent_history = df[["Date", "Brent_Close"]].dropna().tail(252)
-            if not brent_history.empty:
-                ax.plot(brent_history["Date"], brent_history["Brent_Close"],
-                        label="Brent close", linewidth=1.5)
-        ax.axvline(feature_date, linestyle="--", alpha=.7, label="Forecast reference date")
-        ax.set_ylabel("USD per barrel")
-        ax.set_xlabel("Market date")
-        ax.grid(alpha=0.22)
-        ax.legend()
-        fig.tight_layout()
-        st.pyplot(fig, clear_figure=True)
-        plt.close(fig)
-
 with scenario_tab:
     st.subheader("Interactive what-if scenario builder")
     st.markdown(
