@@ -69,6 +69,12 @@ div[data-testid="stTabs"] button[aria-selected="true"] {color:#222d36; border-bo
 div[data-testid="stMetric"] {background:#fff; border:1px solid #e5e6e7;
     border-radius:12px; padding:.75rem 1rem; box-shadow:0 3px 12px rgba(20,30,40,.035);}
 div[data-testid="stDataFrame"] {background:#fff; border:1px solid #e8e8e8; border-radius:12px;}
+div[data-baseweb="select"] > div,
+div[data-baseweb="input"] > div,
+div[data-testid="stNumberInput"] input {
+    background:#fff !important; color:#202a35 !important; border-color:#d9dee3 !important;
+}
+div[data-testid="stNumberInput"] button {background:#f7f7f5 !important; color:#46515b !important;}
 h1, h2, h3, h4 {color:#1f2b35 !important;}
 .stButton > button {border-radius:9px; border-color:#c7b17f;}
 </style>
@@ -126,6 +132,17 @@ def load_saved_state():
 
     brent_close = None
     brent_date = None
+    dxy_close = None
+    dxy_date = None
+    if "DXY_Close" in df.columns:
+        dxy_rows = df.loc[pd.to_numeric(df["DXY_Close"], errors="coerce").notna(),
+                          ["Date", "DXY_Close"]].copy()
+        if not dxy_rows.empty:
+            dxy_rows["DXY_Close"] = pd.to_numeric(dxy_rows["DXY_Close"], errors="coerce")
+            latest_dxy = dxy_rows.iloc[-1]
+            dxy_close = float(latest_dxy["DXY_Close"])
+            dxy_date = pd.Timestamp(latest_dxy["Date"]).normalize()
+
     if "Brent_Close" in df.columns:
         brent_rows = df.loc[pd.to_numeric(df["Brent_Close"], errors="coerce").notna(),
                              ["Date", "Brent_Close"]].copy()
@@ -140,7 +157,7 @@ def load_saved_state():
         "feature_date": feature_date, "market_date": market_date,
         "current_close": current_close, "feature_names": feature_names,
         "feature_idx": feature_idx, "brent_close": brent_close,
-        "brent_date": brent_date,
+        "brent_date": brent_date, "dxy_close": dxy_close, "dxy_date": dxy_date,
     }
 
 
@@ -337,44 +354,46 @@ current_close = state["current_close"]
 brent_close = state["brent_close"]
 brent_date = state["brent_date"]
 
+brent_date = state["brent_date"]
+dxy_close = state["dxy_close"]
+dxy_date = state["dxy_date"]
+
 st.markdown("### Market snapshot")
-snap1, snap2, snap3 = st.columns(3, gap="medium")
+snap1, snap2, snap3, snap4 = st.columns(4, gap="medium")
 with snap1:
     price_card(
         "WTI · US crude benchmark", f"USD {current_close:,.2f}/bbl",
-        f"Last complete model row: {feature_date.date()}",
-        "Yahoo Finance continuous futures · CL=F",
-        "Used by the current WTI forecasting model"
+        f"Model reference date: {feature_date.date()}",
+        "West Texas Intermediate · CL=F",
+        "Main target of this research model"
     )
 with snap2:
-    with st.container():
-        if brent_close is not None:
-            price_card(
-                "Brent · Global crude benchmark", f"USD {brent_close:,.2f}/bbl",
-                f"Last saved Brent bar: {brent_date.date()}",
-                "Yahoo Finance continuous futures · BZ=F",
-                "Market comparison only · not a model forecast"
-            )
-        else:
-            price_card(
-                "Brent · Global crude benchmark", None,
-                "Awaiting first verified Brent refresh",
-                "Yahoo Finance continuous futures · BZ=F",
-                "Will appear after the next successful refresh"
-            )
+    price_card(
+        "Brent · Global crude benchmark",
+        f"USD {brent_close:,.2f}/bbl" if brent_close is not None else None,
+        f"Last saved bar: {brent_date.date()}" if brent_date is not None else "No verified Brent bar",
+        "North Sea crude benchmark · BZ=F",
+        "Lagged Brent is one model input"
+    )
 with snap3:
+    price_card(
+        "US Dollar Index · DXY",
+        f"{dxy_close:,.2f}" if dxy_close is not None else None,
+        f"Last saved bar: {dxy_date.date()}" if dxy_date is not None else "No DXY observation",
+        "US dollar against a currency basket",
+        "DXY changes are scenario-adjustable"
+    )
+with snap4:
     if brent_close is not None and brent_date == feature_date:
-        spread = brent_close - current_close
-        spread_value = f"USD {spread:+,.2f}/bbl"
-        spread_date = f"Synchronized close date: {feature_date.date()}"
-        spread_note = "Brent minus WTI price differential"
+        spread_value = f"USD {brent_close - current_close:+,.2f}/bbl"
+        spread_date = f"Synchronized close: {feature_date.date()}"
     else:
         spread_value = "Not comparable"
-        spread_date = "Benchmark dates are not synchronized"
-        spread_note = "Spread is shown only when both closes share a date"
+        spread_date = "Dates are not synchronized"
     price_card(
         "Brent − WTI spread", spread_value, spread_date,
-        spread_note, "Market context · not a forecast signal"
+        "Difference between the two benchmarks",
+        "Market context"
     )
 
 with st.expander("WTI and Brent: what is the difference?"):
@@ -563,167 +582,185 @@ with scenario_tab:
     st.session_state.setdefault("scenario_preset", "Custom / manual")
 
     st.selectbox(
-        "Load a demo scenario",
+        "Choose a demo scenario",
         options=list(SCENARIO_PRESETS.keys()),
         key="scenario_preset",
         on_change=apply_scenario_preset,
-        help="Presets are illustrative assumption bundles. They are not claims about current events."
+        help="Preset values are illustrative assumptions, not claims about a real event."
     )
-    st.caption("After loading a preset, change any slider to create your own combination.")
+    st.caption("Select a preset or move any control. The result panel updates automatically.")
 
-    with st.container(border=True):
-        st.markdown("#### 1 · WTI market & currency")
-        col1, col2 = st.columns(2, gap="large")
-        with col1:
-            wti_shock = st.slider(
-                "WTI reference price shock (%)", min_value=-20.0, max_value=20.0,
-                step=0.5, key="scenario_wti_shock",
-                help="Applies a hypothetical move to the latest complete WTI OHLC row and recalculates price-history features."
-            )
-            dxy_move = st.slider(
-                "US Dollar Index (DXY) change (%)", min_value=-10.0, max_value=10.0,
-                step=0.25, key="scenario_dxy_move",
-                help="Changes the latest DXY level and its derived return features."
-            )
-        with col2:
-            st.markdown("**Commodity benchmark inputs**")
-            brent_move = st.slider("Brent-linked price change (%)", -30.0, 30.0, step=1.0, key="scenario_brent_move")
-            urals_move = st.slider("Urals crude price change (%)", -30.0, 30.0, step=1.0, key="scenario_urals_move")
-            espo_move = st.slider("ESPO crude price change (%)", -30.0, 30.0, step=1.0, key="scenario_espo_move")
+    control_col, result_col = st.columns([1.45, 1], gap="large")
 
-    with st.container(border=True):
-        st.markdown("#### 2 · Supply, production & inventories")
-        col1, col2, col3 = st.columns(3, gap="medium")
-        with col1:
-            inventory_change = st.number_input(
-                "US commercial crude stocks (thousand barrels)",
-                min_value=-50000, max_value=50000, step=1000,
-                key="scenario_inventory_change",
-                help="Positive = inventory build; negative = inventory draw. This is commercial stock, not Strategic Petroleum Reserve."
-            )
-        with col2:
-            rig_change = st.number_input(
-                "Active US oil rig-count change", min_value=-150, max_value=150,
-                step=5, key="scenario_rig_change",
-                help="Hypothetical change in active oil-directed drilling rigs."
-            )
-        with col3:
+    with control_col:
+        with st.container(border=True):
+            st.markdown("#### 1 · Market prices & currency")
+            m1, m2 = st.columns(2, gap="medium")
+            with m1:
+                wti_shock = st.slider(
+                    "WTI price shock (%)", -20.0, 20.0, step=0.5,
+                    key="scenario_wti_shock",
+                    help="Changes the reference WTI price and recalculates its historical technical features."
+                )
+                dxy_move = st.slider(
+                    "US Dollar Index · DXY (%)", -10.0, 10.0, step=0.25,
+                    key="scenario_dxy_move",
+                    help="Changes the saved DXY level and its derived return/momentum features."
+                )
+                brent_move = st.slider(
+                    "Brent crude (%)", -30.0, 30.0, step=1.0,
+                    key="scenario_brent_move",
+                    help="Applies a percentage shock to the model's lagged Brent input."
+                )
+            with m2:
+                urals_move = st.slider(
+                    "Urals crude (%)", -30.0, 30.0, step=1.0,
+                    key="scenario_urals_move",
+                    help="Applies a percentage shock to the model's lagged Urals input."
+                )
+                espo_move = st.slider(
+                    "ESPO crude (%)", -30.0, 30.0, step=1.0,
+                    key="scenario_espo_move",
+                    help="Applies a percentage shock to the model's lagged ESPO input."
+                )
+
+        with st.container(border=True):
+            st.markdown("#### 2 · Supply & storage")
+            s1, s2 = st.columns(2, gap="medium")
+            with s1:
+                inventory_change = st.number_input(
+                    "US commercial crude stocks (kbbl)",
+                    min_value=-50000, max_value=50000, step=1000,
+                    key="scenario_inventory_change",
+                    help="Change in commercial stocks. +2,000 kbbl means +2 million barrels."
+                )
+            with s2:
+                rig_change = st.number_input(
+                    "Active US oil rigs (count)",
+                    min_value=-150, max_value=150, step=5,
+                    key="scenario_rig_change",
+                    help="Hypothetical change in active oil-directed drilling rigs."
+                )
             production_move = st.slider(
-                "Global oil production change (%)", -5.0, 5.0, step=0.5,
+                "Global oil production (%)", -5.0, 5.0, step=0.5,
                 key="scenario_production_move",
-                help="Applies a shock to the stored three-month-lagged global production input."
-            )
-        st.caption("Inventory is in kbbl (thousand barrels). For example, +2,000 kbbl = +2 million barrels.")
-
-    with st.container(border=True):
-        st.markdown("#### 3 · Geopolitical risk, trade policy & wider commodities")
-        col1, col2, col3 = st.columns(3, gap="medium")
-        with col1:
-            gpr_move = st.slider(
-                "Geopolitical Risk Index (GPR) change (%)", -50.0, 100.0,
-                step=5.0, key="scenario_gpr_move",
-                help="Applies the same proportional shock to the stored GPR total, threats and acts indices."
-            )
-            tpu_move = st.slider(
-                "Trade Policy Uncertainty (TPU) change (%)", -50.0, 100.0,
-                step=5.0, key="scenario_tpu_move"
-            )
-        with col2:
-            ttf_move = st.slider("European natural gas · TTF (%)", -30.0, 30.0, step=1.0, key="scenario_ttf_move")
-            wheat_move = st.slider("Wheat price (%)", -30.0, 30.0, step=1.0, key="scenario_wheat_move")
-        with col3:
-            urea_move = st.slider("Urea / fertilizer price (%)", -30.0, 30.0, step=1.0, key="scenario_urea_move")
-            chosen_horizon = st.selectbox(
-                "ML scenario horizon", SCENARIO_HORIZONS, key="scenario_horizon",
-                format_func=lambda h: labels[h],
-                help="The 1- and 4-session choices are excluded here because the selected production method is a zero-return baseline and ignores scenario features."
+                help="Applies a shock to the model's stored global production feature (three-month lagged)."
             )
 
-    macro_shocks = {
-        "brent": brent_move, "urals": urals_move, "espo": espo_move,
-        "ttf": ttf_move, "wheat": wheat_move, "urea": urea_move,
-        "gpr": gpr_move, "tpu": tpu_move, "world_prod": production_move,
-    }
+        with st.container(border=True):
+            st.markdown("#### 3 · Geopolitical risk & related indicators")
+            r1, r2 = st.columns(2, gap="medium")
+            with r1:
+                gpr_move = st.slider(
+                    "Geopolitical Risk Index · GPR (%)", -50.0, 100.0,
+                    step=5.0, key="scenario_gpr_move",
+                    help="Changes stored GPR total, threats and acts indices together."
+                )
+                tpu_move = st.slider(
+                    "Trade Policy Uncertainty · TPU (%)", -50.0, 100.0,
+                    step=5.0, key="scenario_tpu_move"
+                )
+                ttf_move = st.slider(
+                    "European natural gas · TTF (%)", -30.0, 30.0,
+                    step=1.0, key="scenario_ttf_move"
+                )
+            with r2:
+                wheat_move = st.slider(
+                    "Wheat price (%)", -30.0, 30.0, step=1.0,
+                    key="scenario_wheat_move"
+                )
+                urea_move = st.slider(
+                    "Urea / fertilizer price (%)", -30.0, 30.0,
+                    step=1.0, key="scenario_urea_move"
+                )
+                chosen_horizon = st.selectbox(
+                    "Model horizon", SCENARIO_HORIZONS,
+                    key="scenario_horizon",
+                    format_func=lambda h: labels[h],
+                    help="5, 10 or 20 observed trading sessions. 1- and 4-session production methods are zero-return baselines."
+                )
+
+        macro_shocks = {
+            "brent": brent_move, "urals": urals_move, "espo": espo_move,
+            "ttf": ttf_move, "wheat": wheat_move, "urea": urea_move,
+            "gpr": gpr_move, "tpu": tpu_move, "world_prod": production_move,
+        }
+
+        st.caption(
+            "Coverage note: the inventory control is US commercial stock, not Strategic Petroleum Reserve. "
+            "SPR releases and direct shipping-route disruption are not separate trained model inputs."
+        )
+
+    with result_col:
+        with st.container(border=True):
+            st.markdown("#### Live scenario output")
+            st.caption("Updates automatically when you change the controls.")
+            try:
+                scenario_x, scenario_close = make_scenario_features(
+                    state, wti_shock, dxy_move,
+                    int(inventory_change), int(rig_change), macro_shocks
+                )
+                baseline = models[chosen_horizon]
+                baseline_return = float(baseline["return"])
+                baseline_price = float(baseline["price"])
+                scenario_return = float(baseline["pipeline"].predict(scenario_x)[0])
+                scenario_price = scenario_close * (1.0 + scenario_return)
+
+                if (not np.isfinite(scenario_return) or
+                    not np.isfinite(scenario_price) or scenario_price <= 0):
+                    raise ValueError("Model returned an invalid scenario estimate.")
+
+                delta_return_pp = (scenario_return - baseline_return) * 100
+                delta_price = scenario_price - baseline_price
+
+                st.metric(
+                    "Scenario WTI reference",
+                    f"USD {scenario_close:,.2f}/bbl"
+                )
+                st.metric(
+                    "Model-estimated WTI close",
+                    f"USD {scenario_price:,.2f}/bbl",
+                    delta=f"USD {delta_price:+,.2f} vs base case"
+                )
+                st.metric(
+                    "Model-estimated return",
+                    f"{scenario_return * 100:+.3f}%",
+                    delta=f"{delta_return_pp:+.3f} percentage points"
+                )
+                st.divider()
+                st.markdown("**Base case vs selected scenario**")
+                st.write(
+                    f"Base case: **USD {baseline_price:,.2f}/bbl**  "
+                    f"({baseline_return * 100:+.3f}%)"
+                )
+                st.write(
+                    f"Scenario: **USD {scenario_price:,.2f}/bbl**  "
+                    f"({scenario_return * 100:+.3f}%)"
+                )
+                st.caption(
+                    f"Forecast horizon: {labels[chosen_horizon]}. "
+                    "WTI shock changes the starting reference price directly; other inputs change the model feature row."
+                )
+                if not baseline["beats_zero"]:
+                    st.warning(
+                        "Experimental model: this horizon did not beat the zero-return benchmark "
+                        "on the current chronological holdout. Treat this as exploratory scenario analysis."
+                    )
+                else:
+                    st.info(
+                        "This horizon beat the zero-return benchmark on the current chronological holdout; "
+                        "that does not guarantee future accuracy."
+                    )
+            except Exception as exc:
+                st.error(f"Scenario calculation unavailable: {type(exc).__name__}: {exc}")
 
     st.markdown(
-        '<div class="callout-warn"><strong>Model coverage:</strong> GPR and TPU are lagged historical indices, not live news or event detection. '
-        'Supply-chain disruption is represented only indirectly through the GPR, global-production and commodity assumptions; '
-        'there is no standalone shipping-lane feature. Strategic Petroleum Reserve / emergency-stock releases are not a trained input. '
-        'The inventory control above refers to US commercial crude stocks, not emergency reserves.</div>',
+        '<div class="callout-warn"><strong>Model scope:</strong> GPR and TPU are lagged historical indices, '
+        'not live news feeds. Supply-chain disruption is represented only indirectly through geopolitical risk, '
+        'production and commodity assumptions. Strategic emergency-stock releases and individual shipping routes '
+        'are not standalone model inputs.</div>',
         unsafe_allow_html=True
     )
-
-    st.caption("Scenario presets are illustrative bundles. The model reflects historical associations, not causal effects or live event detection.")
-
-    try:
-        scenario_x, scenario_close = make_scenario_features(
-            state, wti_shock, dxy_move, int(inventory_change), int(rig_change), macro_shocks
-        )
-        baseline = models[chosen_horizon]
-        baseline_return = float(baseline["return"])
-        baseline_price = float(baseline["price"])
-        scenario_return = float(baseline["pipeline"].predict(scenario_x)[0])
-        scenario_price = scenario_close * (1.0 + scenario_return)
-
-        if not np.isfinite(scenario_return) or not np.isfinite(scenario_price) or scenario_price <= 0:
-            raise ValueError("Model returned an invalid scenario forecast.")
-
-        delta_return_pp = (scenario_return - baseline_return) * 100
-        delta_price = scenario_price - baseline_price
-        st.divider()
-        st.subheader("Scenario result")
-        a, b, c = st.columns(3, gap="medium")
-        a.metric("Scenario reference WTI price", f"USD {scenario_close:,.2f}/bbl")
-        b.metric(
-            "Scenario model-estimated WTI close", f"USD {scenario_price:,.2f}/bbl",
-            delta=f"USD {delta_price:+,.2f} vs baseline"
-        )
-        c.metric(
-            "Scenario expected change", f"{scenario_return * 100:+.3f}%",
-            delta=f"{delta_return_pp:+.3f} pp vs baseline"
-        )
-
-        comparison = pd.DataFrame([
-            {
-                "Case": "Base-case model output", "Reference WTI close (USD/bbl)": current_close,
-                "Expected change": baseline_return * 100,
-                "Estimated WTI close (USD/bbl)": baseline_price
-            },
-            {
-                "Case": "Selected scenario output", "Reference WTI close (USD/bbl)": scenario_close,
-                "Expected change": scenario_return * 100,
-                "Estimated WTI close (USD/bbl)": scenario_price
-            }
-        ])
-        st.dataframe(
-            comparison.style.format({
-                "Reference WTI close (USD/bbl)": "{:,.2f}",
-                "Expected change": "{:+.3f}%",
-                "Estimated WTI close (USD/bbl)": "{:,.2f}"
-            }),
-            width="stretch", hide_index=True
-        )
-        st.caption(
-            f"Horizon: {chosen_horizon} observed trading sessions. The reference-price shock "
-            "directly changes the starting WTI price. Compare expected changes to see the model "
-            "response beyond that direct price adjustment."
-        )
-        if not baseline["beats_zero"]:
-            st.warning(
-                "This scenario output is produced by an experimental ExtraTrees model. "
-                "On the current chronological holdout it did not beat the zero-change benchmark, "
-                "so treat the result as an exploratory what-if response, not a proven forecast improvement."
-            )
-        else:
-            st.info(
-                "This experimental horizon performed better than the zero-change benchmark on the current chronological holdout. "
-                "That is encouraging, but it is not a guarantee of future accuracy."
-            )
-        st.caption(
-            "Tree-based models can return the same estimate for small slider movements when the changed values remain inside the same decision regions."
-        )
-    except Exception as exc:
-        st.error(f"Scenario calculation unavailable: {type(exc).__name__}: {exc}")
 
     with st.expander("What the 64 model features contain"):
         st.write(
