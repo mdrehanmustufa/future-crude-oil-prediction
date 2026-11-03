@@ -2,7 +2,6 @@ from pathlib import Path
 import json
 
 import joblib
-import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -81,7 +80,7 @@ st.dataframe(
     hide_index=True
 )
 
-mean_error = float(history["Absolute_Percent_Error"].mean())
+mean_error = float(display["Absolute error (%)"].mean())
 st.metric("4-session mean absolute percentage error", f"{mean_error:.2f}%")
 
 st.info(
