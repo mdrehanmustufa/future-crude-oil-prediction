@@ -7,7 +7,6 @@ on:
       - integration-test
       - dashboard-ux-refresh
       - next-session-forecast-validation
-      - feature/scenario-live-result-panel
     paths-ignore:
       - "Final_Dataset_AI_dxy_fixed.csv"
       - "model_artifacts.joblib"
