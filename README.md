@@ -22,8 +22,9 @@ Global observed inventories and worldwide rig-count reports are available from e
 
 The visible controls use **absolute levels**, not percentage shocks.
 
-- **Global oil production** is constrained to the 1st–99th percentile of positive values actually observed for the trained `EIA_world_prod_lag3m` feature. This matters because ExtraTrees is a tree ensemble and does not reliably extrapolate outside its training support. In the current dataset, 64,725 is below the positive historical minimum (about 70,010), so it is not presented as a reliable model scenario. The feature is lagged by three months, not a live supply feed.
-- **Estimated cumulative price change** is the model's predicted return over the selected 5/10/20 trading-session horizon, measured from the scenario's WTI reference price. It is not investment profit or a guaranteed return.
+- **Global oil production** has a broad 60,000–100,000 prototype slider range so users can test hypothetical supply shocks, including 64,725. The existing ML feature is still `EIA_world_prod_lag3m`, lagged by three months; values outside historical support are not reliable ML extrapolations.
+- **Prototype stress overlay:** each 1% production decline relative to the saved reference adds 0.8% to the displayed scenario price (with a 50% lower multiplier floor); each 1% production rise subtracts 0.8%. Geopolitical level 0–5 adds 0%, 2.5%, 5%, 7.5%, 10%, or 12.5%, respectively. Supply and geopolitical multipliers are combined.
+- **Illustrative WTI scenario estimate** = the existing ML-only scenario estimate multiplied by the transparent supply and GPR stress overlay. The overlay is a prototype assumption, not a coefficient learned or validated by the ML model.
 
 The geopolitical control is an event-scenario ladder from 0 to 5:
 
