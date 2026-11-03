@@ -713,6 +713,7 @@ with market_tab:
             use_container_width=True,
             config={"displaylogo": False, "scrollZoom": True},
             key=f"holdout_chart_{chart_horizon}",
+            width="stretch",
             on_select="rerun",
             selection_mode=("points",),
         )
@@ -750,7 +751,6 @@ with market_tab:
             )
 
         chart_mae = float((chart_data["estimated_close"] - chart_data["actual_close"]).abs().mean())
-        chart_zero_mae = float(chart_data["absolute_error"].mean()) if "absolute_error" in chart_data else chart_mae
         # Baseline MAE for the same dates, derived from the saved reference close.
         same_dates_zero_mae = float(
             (chart_data["reference_close"] - chart_data["actual_close"]).abs().mean()
