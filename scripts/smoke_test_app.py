@@ -49,7 +49,7 @@ assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert len(app_test.tabs) == 2, f"Expected two main tabs, found {len(app_test.tabs)}"
 assert len(app_test.slider) == 11, f"Expected 11 WTI/DXY/macro sliders, found {len(app_test.slider)}"
 assert len(app_test.number_input) == 2
-assert len(app_test.selectbox) == 1
+assert len(app_test.selectbox) == 2
 
 app_test.slider[0].set_value(1.0)
 app_test.slider[1].set_value(1.0)
