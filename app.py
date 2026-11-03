@@ -161,90 +161,63 @@ def load_saved_state():
     }
 
 
-def make_scenario_features(state, wti_shock_pct, dxy_move_pct,
-                           inventory_change_kbbl, rig_change, macro_shocks=None):
+def make_scenario_features(
+    state, wti_price_usd, dxy_level, inventory_mmbbl, oil_rig_count,
+    brent_price_usd, gpr_index
+):
+    """Create a temporary 64-feature row from absolute scenario levels."""
     df = state["df"]
     idx = state["feature_idx"]
     feature_names = state["feature_names"]
-
-    macro_shocks = macro_shocks or {}
-    unchanged = (
-        abs(wti_shock_pct) < 1e-12
-        and abs(dxy_move_pct) < 1e-12
-        and inventory_change_kbbl == 0
-        and rig_change == 0
-        and all(abs(float(value)) < 1e-12 for value in macro_shocks.values())
-    )
-    if unchanged:
-        baseline_x = state["models"][1]["latest_x"].copy()
-        return baseline_x.loc[:, feature_names], state["current_close"]
-
     scenario_df = df.copy()
-    wti_factor = 1.0 + wti_shock_pct / 100.0
-    dxy_factor = 1.0 + dxy_move_pct / 100.0
-    if wti_factor <= 0 or dxy_factor <= 0:
-        raise ValueError("WTI and DXY scenario prices must remain positive.")
 
+    values = {
+        "WTI price": wti_price_usd,
+        "DXY level": dxy_level,
+        "US commercial crude stocks (million barrels)": inventory_mmbbl,
+        "US oil rig count": oil_rig_count,
+        "Brent price": brent_price_usd,
+        "Geopolitical Risk Index": gpr_index,
+    }
+    if any(not np.isfinite(float(value)) or float(value) <= 0 for value in values.values()):
+        raise ValueError("All scenario reference levels must be positive finite numbers.")
+
+    old_wti = float(scenario_df.at[idx, "WTI_Close"])
+    if old_wti <= 0:
+        raise ValueError("Saved WTI reference price is invalid.")
+    wti_factor = float(wti_price_usd) / old_wti
     for column in ["WTI_Open", "WTI_High", "WTI_Low", "WTI_Close"]:
-        value = pd.to_numeric(
-            pd.Series([scenario_df.at[idx, column]]), errors="coerce"
-        ).iloc[0]
+        value = pd.to_numeric(pd.Series([scenario_df.at[idx, column]]), errors="coerce").iloc[0]
         if pd.notna(value):
             scenario_df.at[idx, column] = float(value) * wti_factor
 
-    dxy_value = pd.to_numeric(
-        pd.Series([scenario_df.at[idx, "DXY_Close"]]), errors="coerce"
-    ).iloc[0]
-    if pd.isna(dxy_value):
-        raise ValueError("DXY value is missing on the forecast feature date.")
-    scenario_df.at[idx, "DXY_Close"] = float(dxy_value) * dxy_factor
+    old_dxy = pd.to_numeric(pd.Series([scenario_df.at[idx, "DXY_Close"]]), errors="coerce").iloc[0]
+    if pd.isna(old_dxy) or old_dxy <= 0:
+        raise ValueError("DXY value is missing or invalid on the model reference date.")
+    scenario_df.at[idx, "DXY_Close"] = float(dxy_level)
     scenario_df["DXY_ret_1d"] = pd.to_numeric(
         scenario_df["DXY_Close"], errors="coerce"
     ).pct_change(fill_method=None)
 
-    inventory_column = "INV_US_Crude_Stocks_kbbl"
-    rigs_column = "RIG_US_Oil_Rigs"
-    inventory = pd.to_numeric(
-        pd.Series([scenario_df.at[idx, inventory_column]]), errors="coerce"
-    ).iloc[0]
-    rigs = pd.to_numeric(
-        pd.Series([scenario_df.at[idx, rigs_column]]), errors="coerce"
-    ).iloc[0]
-    if pd.isna(inventory) or pd.isna(rigs):
-        raise ValueError("Inventory or rig-count baseline is missing.")
+    scenario_df.at[idx, "INV_US_Crude_Stocks_kbbl"] = float(inventory_mmbbl) * 1000.0
+    scenario_df.at[idx, "RIG_US_Oil_Rigs"] = float(oil_rig_count)
 
-    new_inventory = float(inventory) + inventory_change_kbbl
-    new_rigs = float(rigs) + rig_change
-    if new_inventory < 0 or new_rigs < 0:
-        raise ValueError("Scenario cannot create negative inventory or rig count.")
-    scenario_df.at[idx, inventory_column] = new_inventory
-    scenario_df.at[idx, rigs_column] = new_rigs
+    brent_column = "CMD_brent_lag1"
+    old_brent = pd.to_numeric(pd.Series([scenario_df.at[idx, brent_column]]), errors="coerce").iloc[0]
+    if pd.isna(old_brent) or old_brent <= 0:
+        raise ValueError("Stored lagged Brent input is missing or invalid.")
+    scenario_df.at[idx, brent_column] = float(brent_price_usd)
 
-    macro_feature_groups = {
-        "brent": ["CMD_brent_lag1"],
-        "urals": ["CMD_urals_lag1"],
-        "espo": ["CMD_espo_lag1"],
-        "ttf": ["CMD_ttf_lag1"],
-        "wheat": ["CMD_wheat_lag1"],
-        "urea": ["CMD_urea_lag1"],
-        "gpr": ["GPR_total_lag1m", "GPR_threats_lag1m", "GPR_acts_lag1m"],
-        "tpu": ["TPU_lag1m"],
-        "world_prod": ["EIA_world_prod_lag3m"],
-    }
-    for control, columns in macro_feature_groups.items():
-        shock = float(macro_shocks.get(control, 0.0))
-        factor = 1.0 + shock / 100.0
-        if factor <= 0:
-            raise ValueError(f"{control} scenario must leave the input positive.")
-        if abs(shock) < 1e-12:
-            continue
-        for column in columns:
-            base_value = pd.to_numeric(
-                pd.Series([scenario_df.at[idx, column]]), errors="coerce"
-            ).iloc[0]
-            if pd.isna(base_value) or base_value <= 0:
-                raise ValueError(f"{column} is missing or invalid for this scenario.")
-            scenario_df.at[idx, column] = float(base_value) * factor
+    gpr_columns = ["GPR_total_lag1m", "GPR_threats_lag1m", "GPR_acts_lag1m"]
+    old_gpr = pd.to_numeric(pd.Series([scenario_df.at[idx, gpr_columns[0]]]), errors="coerce").iloc[0]
+    if pd.isna(old_gpr) or old_gpr <= 0:
+        raise ValueError("Stored GPR baseline is missing or invalid.")
+    gpr_factor = float(gpr_index) / float(old_gpr)
+    for column in gpr_columns:
+        base_value = pd.to_numeric(pd.Series([scenario_df.at[idx, column]]), errors="coerce").iloc[0]
+        if pd.isna(base_value) or base_value < 0:
+            raise ValueError(f"{column} is missing or invalid for this scenario.")
+        scenario_df.at[idx, column] = float(base_value) * gpr_factor
 
     recipes, _ = infer_recipes(df)
     candidates = feature_candidates(scenario_df)
@@ -271,57 +244,40 @@ def make_scenario_features(state, wti_shock_pct, dxy_move_pct,
     return scenario_x, float(scenario_df.at[idx, "WTI_Close"])
 
 
-SCENARIO_DEFAULTS = {
-    "scenario_wti_shock": 0.0,
-    "scenario_dxy_move": 0.0,
-    "scenario_inventory_change": 0,
-    "scenario_rig_change": 0,
-    "scenario_horizon": 5,
-    "scenario_brent_move": 0.0,
-    "scenario_urals_move": 0.0,
-    "scenario_espo_move": 0.0,
-    "scenario_ttf_move": 0.0,
-    "scenario_wheat_move": 0.0,
-    "scenario_urea_move": 0.0,
-    "scenario_gpr_move": 0.0,
-    "scenario_tpu_move": 0.0,
-    "scenario_production_move": 0.0,
-}
-SCENARIO_PRESETS = {
-    "Custom / manual": None,
-    "Reset · current conditions": {key: value for key, value in SCENARIO_DEFAULTS.items() if key != "scenario_horizon"},
-    "Geopolitical escalation": {
-        "scenario_gpr_move": 50.0, "scenario_tpu_move": 15.0,
-        "scenario_brent_move": 5.0, "scenario_urals_move": 4.0,
-        "scenario_espo_move": 4.0, "scenario_production_move": -1.0,
-        "scenario_inventory_change": -1000, "scenario_rig_change": -5,
-    },
-    "Supply disruption · proxy scenario": {
-        "scenario_gpr_move": 25.0, "scenario_tpu_move": 5.0,
-        "scenario_brent_move": 8.0, "scenario_urals_move": 8.0,
-        "scenario_espo_move": 8.0, "scenario_production_move": -3.0,
-        "scenario_inventory_change": -2500, "scenario_rig_change": -5,
-    },
-    "Supply expansion · inventory build": {
-        "scenario_inventory_change": 5000, "scenario_rig_change": 10,
-        "scenario_production_move": 2.0, "scenario_brent_move": -5.0,
-        "scenario_urals_move": -4.0, "scenario_espo_move": -4.0,
-    },
-    "Stronger US dollar": {
-        "scenario_dxy_move": 3.0, "scenario_brent_move": -2.0,
-        "scenario_urals_move": -2.0, "scenario_espo_move": -2.0,
-        "scenario_ttf_move": -5.0, "scenario_wheat_move": -3.0,
-        "scenario_urea_move": -2.0,
-    },
-}
-def apply_scenario_preset():
-    selected = st.session_state.get("scenario_preset", "Custom / manual")
-    values = SCENARIO_PRESETS.get(selected)
-    if values is None:
-        return
-    for key, value in SCENARIO_DEFAULTS.items():
-        if key != "scenario_horizon":
-            st.session_state[key] = values.get(key, value)
+@st.cache_data(ttl=900, show_spinner=False)
+def latest_yahoo_daily_close(symbol):
+    """Return the latest completed daily close for a market reference."""
+    try:
+        history = yf.Ticker(symbol).history(period="10d", interval="1d", auto_adjust=False)
+        if history is None or history.empty or "Close" not in history:
+            return None, None, "Yahoo Finance quote unavailable"
+        closes = history["Close"].dropna()
+        if closes.empty:
+            return None, None, "Yahoo Finance quote unavailable"
+        timestamp = pd.Timestamp(closes.index[-1])
+        return float(closes.iloc[-1]), timestamp.strftime("%d %b %Y"), "Yahoo Finance daily close"
+    except Exception as exc:
+        return None, None, f"Saved dataset fallback · {type(exc).__name__}"
+
+
+def resolve_market_reference(symbol, fallback_value, fallback_date):
+    value, quote_date, source = latest_yahoo_daily_close(symbol)
+    if value is not None and np.isfinite(value) and value > 0:
+        return {"value": float(value), "date": quote_date, "source": source}
+    return {
+        "value": float(fallback_value),
+        "date": str(fallback_date),
+        "source": "Latest saved dataset value · quote fallback"
+    }
+
+
+def reset_scenario_to_latest(defaults):
+    """Restore each scenario widget to the latest published reference value."""
+    for key, value in defaults.items():
+        st.session_state[key] = value
+
+
+SCENARIO_HORIZONS = [5, 10, 20]
 
 
 def price_card(label, value, date_label, description, tag):
