@@ -353,7 +353,7 @@ with st.expander("WTI and Brent: what is the difference?"):
 if market_date > feature_date:
     st.warning(
         f"The dataset contains WTI data through {market_date.date()}, but the latest complete "
-        f"53-feature model row is {feature_date.date()}. Forecast calculations use the latter."
+        f"64-feature model row is {feature_date.date()}. Forecast calculations use the latter."
     )
 else:
     st.caption(
