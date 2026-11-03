@@ -640,12 +640,12 @@ with market_tab:
 
         window_sessions = st.select_slider(
             "Visible holdout observations",
-            options=[30, 60, 90, 180, 0],
+            options=[30, 60, 90, 180, 10000],
             value=90,
-            format_func=lambda n: "Full holdout" if n == 0 else f"Last {n} sessions",
+            format_func=lambda n: "Full holdout" if n == 10000 else f"Last {n} sessions",
             key="backtest_window",
         )
-        chart_data = backtest if window_sessions == 0 else backtest.tail(window_sessions)
+        chart_data = backtest if window_sessions == 10000 else backtest.tail(window_sessions)
         abs_error = (chart_data["estimated_close"] - chart_data["actual_close"]).abs()
         abs_error_pct = abs_error / chart_data["actual_close"].abs().clip(lower=1e-9) * 100.0
 
@@ -863,7 +863,6 @@ with scenario_tab:
             gpr_level = st.select_slider(
                 "Choose an event scenario · 0 to 5",
                 options=list(range(6)),
-                value=int(latest_defaults["scenario_gpr_level"]),
                 format_func=lambda level: f"{level} · {gpr_ladder[level]['label']}",
                 key="scenario_gpr_level",
                 help="These are illustrative scenario tiers. Each tier maps to a percentile of the model's historical GPR index distribution."
