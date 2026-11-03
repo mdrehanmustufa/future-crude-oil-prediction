@@ -450,6 +450,18 @@ global_production_reference = float(df.at[scenario_idx, "EIA_world_prod_lag3m"])
 gpr_reference = float(df.at[scenario_idx, "GPR_total_lag1m"])
 gpr_ladder, gpr_current_level, gpr_current_percentile = build_gpr_scenario_ladder(df, gpr_reference)
 
+# Establish the empirical support of the trained production feature.
+# ExtraTrees is not an extrapolating model; out-of-range slider values are unreliable.
+production_history = pd.to_numeric(df["EIA_world_prod_lag3m"], errors="coerce").dropna()
+production_history = production_history[np.isfinite(production_history) & (production_history > 0)]
+if len(production_history) < 100:
+    raise ValueError("Insufficient positive global-production history to calibrate the scenario control.")
+production_training_min = float(production_history.min())
+production_training_max = float(production_history.max())
+production_p01 = float(production_history.quantile(0.01))
+production_p99 = float(production_history.quantile(0.99))
+production_percentile_reference = float((production_history <= global_production_reference).mean())
+
 latest_defaults = {
     "scenario_wti_price": float(market_inputs["wti"]["value"]),
     "scenario_brent_price": float(market_inputs["brent"]["value"]),
@@ -793,14 +805,16 @@ with scenario_tab:
         unsafe_allow_html=True
     )
 
-    global_prod_step = max(abs(global_production_reference) * 0.002, 0.01)
-    global_prod_min = max(0.001, global_production_reference * 0.75)
-    global_prod_max = max(global_prod_min + global_prod_step, global_production_reference * 1.25)
-    gpr_step = max(abs(gpr_reference) * 0.01, 0.1)
-    gpr_max = max(100.0, gpr_reference * 3.0, gpr_reference + 50.0)
+    # Restrict production slider to the central 98% of observed positive training values.
+    # A value such as 64,725 is below the observed positive minimum in this training set.
+    global_prod_min = production_p01
+    global_prod_max = production_p99
+    global_prod_step = max((global_prod_max - global_prod_min) / 250.0, 10.0)
 
     for key, value in latest_defaults.items():
         st.session_state.setdefault(key, value)
+    if not global_prod_min <= float(st.session_state["scenario_global_production"]) <= global_prod_max:
+        st.session_state["scenario_global_production"] = global_production_reference
 
     st.button(
         "↺ Reset to current references",
@@ -853,11 +867,23 @@ with scenario_tab:
                 max_value=float(global_prod_max),
                 step=float(global_prod_step),
                 key="scenario_global_production",
-                help="Uses the existing EIA_world_prod_lag3m feature and its original dataset unit. The feature is lagged by three months, not a live daily production feed."
+                help=(
+                    "Uses EIA_world_prod_lag3m, a three-month-lagged historical feature. "
+                    f"The central 98% training range is {production_p01:,.0f}–{production_p99:,.0f}. "
+                    "ExtraTrees does not extrapolate reliably outside its training range."
+                )
             )
             st.caption(
-                f"Current model reference: {global_production_reference:,.3f} · "
-                "EIA world-production feature · 3-month lag · source units retained."
+                f"Latest model reference: {global_production_reference:,.0f} "
+                f"(historical percentile P{production_percentile_reference * 100:.1f}) · "
+                f"training support P1–P99: {production_p01:,.0f}–{production_p99:,.0f} · "
+                f"full positive history: {production_training_min:,.0f}–{production_training_max:,.0f}. "
+                "Input is lagged by 3 months and is not a live production feed."
+            )
+            st.info(
+                "Values below the model's positive historical minimum are outside training support. "
+                f"For example, 64,725 is below {production_training_min:,.0f}; the model cannot make a trustworthy "
+                "extrapolation there, so the slider is limited to the central historical range."
             )
 
         with st.container(border=True):
@@ -944,13 +970,15 @@ with scenario_tab:
                     delta=f"USD {delta_price:+,.2f} vs reset case"
                 )
                 st.metric(
-                    "Estimated return",
+                    f"Estimated cumulative price change · {chosen_horizon} sessions",
                     f"{scenario_return * 100:+.3f}%",
-                    delta=f"{delta_return_pp:+.3f} pp vs reset case"
+                    delta=f"{delta_return_pp:+.3f} percentage points vs reset case"
                 )
                 st.caption(
-                    f"Reset/reference case: USD {reference_price:,.2f}/bbl · "
-                    f"Changed scenario: USD {scenario_price:,.2f}/bbl."
+                    f"This is the model's cumulative percentage change over {chosen_horizon} trading sessions, "
+                    "measured from the changed scenario's WTI reference price. It is not profit or a guaranteed return. "
+                    f"Reset/reference estimate: USD {reference_price:,.2f}/bbl · "
+                    f"Changed-scenario estimate: USD {scenario_price:,.2f}/bbl."
                 )
 
                 # Test all six GPR levels against the same selected market assumptions.
@@ -975,26 +1003,49 @@ with scenario_tab:
                         "Estimated WTI close": level_price,
                     })
                 gpr_sensitivity_df = pd.DataFrame(gpr_sensitivity_rows)
-                st.markdown("**GPR impact check · other inputs held constant**")
+                level_zero_price = float(gpr_sensitivity_df.loc[gpr_sensitivity_df["Level"].eq(0), "Estimated WTI close"].iloc[0])
+                gpr_sensitivity_df["Change vs level 0 (USD)"] = (
+                    gpr_sensitivity_df["Estimated WTI close"] - level_zero_price
+                )
+                gpr_sensitivity_df["Change vs level 0 (%)"] = (
+                    gpr_sensitivity_df["Change vs level 0 (USD)"] / level_zero_price * 100.0
+                    if level_zero_price else 0.0
+                )
+                st.markdown("**GPR impact check · all other inputs held constant**")
                 st.dataframe(
                     gpr_sensitivity_df.style.format({
                         "Mapped GPR index": "{:,.2f}",
                         "Estimated WTI close": "USD {:,.2f}",
+                        "Change vs level 0 (USD)": "{:+,.2f}",
+                        "Change vs level 0 (%)": "{:+.3f}%",
                     }),
                     width="stretch", hide_index=True
                 )
                 distinct_gpr_outputs = gpr_sensitivity_df["Estimated WTI close"].round(4).nunique()
-                if distinct_gpr_outputs == 1:
+                max_gpr_impact_pct = float(gpr_sensitivity_df["Change vs level 0 (%)"].abs().max())
+                if max_gpr_impact_pct < 0.10:
                     st.warning(
-                        "The GPR input changes across all six levels, but this trained model gives the same WTI estimate. "
-                        "That means the current fitted trees are not using GPR splits for this selected horizon and market setup. "
-                        "The dashboard will not invent a price movement; this is a model limitation to investigate."
+                        f"GPR 0–5 changes the estimate by at most {max_gpr_impact_pct:.3f}% for this horizon. "
+                        "This is genuinely weak sensitivity in the current trained model, not proof that geopolitical "
+                        "events have no effect on oil. The input is a one-month-lagged, general newspaper GPR index; "
+                        "it does not distinguish oil-producing countries or actual oil-export/shipping disruptions. "
+                        "Do not interpret this output as an oil-specific geopolitical shock forecast."
+                    )
+                elif distinct_gpr_outputs == 1:
+                    st.warning(
+                        "GPR changes across all six levels, but this fitted tree model returns the same estimate "
+                        "for this market setup. Its current tree leaves are insensitive to GPR here."
                     )
                 else:
-                    st.success(
-                        f"The model produces {distinct_gpr_outputs} distinct WTI estimates across the six GPR tiers. "
-                        "Tree-based models can still remain flat between some adjacent tiers."
+                    st.caption(
+                        f"Observed model sensitivity across the ladder: {max_gpr_impact_pct:.3f}% from level 0. "
+                        "This is an empirical response of the current fitted model, not a guaranteed market effect."
                     )
+                st.markdown(
+                    "[Research direction: daily AI-GPR with Oil Threats and Oil Acts components](https://www.matteoiacoviello.com/ai_gpr.html). "
+                    "Those oil-specific features are not yet part of this model's trained 64 inputs and require historical "
+                    "alignment, retraining and chronological validation before they can drive its estimate."
+                )
 
                 graph_horizons = [item["horizon"] for item in horizon_results]
                 reference_prices = [item["reference_price"] for item in horizon_results]

@@ -55,6 +55,7 @@ assert len(app_test.select_slider) == 2, "Expected a backtest range selector and
 
 initial_slider_values = [float(item.value) for item in app_test.slider]
 initial_gpr_level = int(app_test.select_slider[-1].value)
+
 app_test.slider[0].set_value(initial_slider_values[0] * 1.05)
 app_test.slider[1].set_value(initial_slider_values[1] * 1.05)
 app_test.slider[2].set_value(initial_slider_values[2] * 1.02)
@@ -97,6 +98,16 @@ exec(compile(module, str(APP), "exec"), namespace)
 scenario_function = namespace["make_scenario_features"]
 
 df = fe.standardize(pd.read_csv(DATA, parse_dates=["Date"]))
+production_values = pd.to_numeric(df["EIA_world_prod_lag3m"], errors="coerce").dropna()
+production_values = production_values[production_values > 0]
+production_p01 = float(production_values.quantile(0.01))
+production_p99 = float(production_values.quantile(0.99))
+assert production_p01 <= initial_slider_values[3] <= production_p99
+assert 64725 < production_values.min(), "Test scenario 64,725 should be recognized as out of training support."
+source_text = APP.read_text(encoding="utf-8")
+assert "Estimated cumulative price change" in source_text
+assert "Change vs level 0 (%)" in source_text
+assert "Oil Threats and Oil Acts" in source_text
 artifacts = joblib.load(MODEL)
 with open(STATUS, encoding="utf-8") as handle:
     status = json.load(handle)
