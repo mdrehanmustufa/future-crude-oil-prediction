@@ -501,7 +501,8 @@ with scenario_tab:
             )
             st.caption(
                 f"Reference GPR: {LATEST_PUBLIC_SCENARIO_INPUTS['gpr_index']:.2f} "
-                f"({LATEST_PUBLIC_SCENARIO_INPUTS['gpr_as_of']}). It is a monthly index, not a live intraday news feed."
+                f"({LATEST_PUBLIC_SCENARIO_INPUTS['gpr_as_of']}; Caldara–Iacoviello series as reported by MacroDataHub). "
+                "It is a monthly index, not a live intraday news feed."
             )
 
     with result_col:
@@ -541,7 +542,7 @@ with scenario_tab:
                     raise ValueError("Model returned an invalid scenario estimate.")
 
                 st.metric(
-                    "Current WTI reference price",
+                    "WTI reference in selected scenario",
                     f"USD {scenario_close:,.2f}/bbl"
                 )
                 st.metric(
