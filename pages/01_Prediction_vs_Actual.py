@@ -95,9 +95,7 @@ model_price = float(record.get("price", float(df.iloc[-1]["WTI_Close"])))
 reference_close = float(record.get("current_close", df.iloc[-1]["WTI_Close"]))
 model_type = str(record.get("model_type", "Not recorded"))
 latest_dataset_date = pd.Timestamp(df["Date"].max()).normalize()
-latest_dataset_close = float(df.iloc[-1]["WTI_Close"])
 
-# Next weekday is a calendar estimate only; exchange holidays may shift the session.
 target_date = feature_date + timedelta(days=1)
 while target_date.weekday() >= 5:
     target_date += timedelta(days=1)
@@ -134,58 +132,57 @@ st.info(
 )
 
 st.divider()
-# Use all available rows from the 25th of the latest data month to the latest saved date.
-period_start = latest_dataset_date.replace(day=25)
+# Build one-session benchmark replay over the full dataset first, then filter to the latest 30 calendar days.
+# This ensures the first visible date can use the previous session's close.
+df["Predicted_Close"] = df["WTI_Close"].shift(1)
+df["Absolute_Error_USD"] = (df["WTI_Close"] - df["Predicted_Close"]).abs()
+df["Absolute_Error_Pct"] = df["Absolute_Error_USD"] / df["WTI_Close"].abs() * 100
+period_start = latest_dataset_date - pd.Timedelta(days=30)
 window = df[(df["Date"] >= period_start) & (df["Date"] <= latest_dataset_date)].copy()
-if window.empty:
-    window = df.tail(10).copy()
+comparison = window.dropna(subset=["Predicted_Close"]).copy()
 
-st.subheader("1. Actual WTI Price")
-st.caption("Historical daily closing price · USD per barrel")
+st.subheader("Last 30 Days · Actual WTI Price")
+st.caption(f"{period_start.strftime('%d %b %Y')} – {latest_dataset_date.strftime('%d %b %Y')} · Daily close · USD per barrel")
 actual_fig = go.Figure()
 actual_fig.add_trace(go.Scatter(
     x=window["Date"], y=window["WTI_Close"], mode="lines+markers",
     name="Actual WTI Price", line=dict(color="#159447", width=3),
-    marker=dict(size=7),
+    marker=dict(size=6),
     hovertemplate="<b>%{x|%d %b %Y}</b><br>Actual: $%{y:,.2f}/bbl<extra></extra>"
 ))
 actual_fig.update_layout(
     height=390, margin=dict(l=10, r=10, t=25, b=10),
     hovermode="x unified", xaxis_title="Trading date", yaxis_title="WTI close (USD/bbl)",
-    legend=dict(orientation="h", y=1.12), template="plotly_white"
+    legend=dict(orientation="h", y=1.12), template="plotly_white",
+    xaxis=dict(rangeslider=dict(visible=True), type="date")
 )
 st.plotly_chart(actual_fig, use_container_width=True)
 
-st.subheader("2. Model Estimate vs Actual Price")
-st.caption("Green = actual closing price · Red = historical one-session benchmark estimate")
-# Historical replay uses the same previous-close rule currently selected by the model.
-window["Predicted_Close"] = window["WTI_Close"].shift(1)
-comparison = window.dropna(subset=["Predicted_Close"]).copy()
-comparison["Absolute_Error_USD"] = (comparison["WTI_Close"] - comparison["Predicted_Close"]).abs()
-comparison["Absolute_Error_Pct"] = comparison["Absolute_Error_USD"] / comparison["WTI_Close"].abs() * 100
-
+st.subheader("Last 30 Days · Benchmark Estimate vs Actual")
+st.caption("Green = actual closing price · Red = previous-close benchmark estimate. Hover over a point for the exact error.")
 compare_fig = go.Figure()
 compare_fig.add_trace(go.Scatter(
     x=comparison["Date"], y=comparison["WTI_Close"], mode="lines+markers",
-    name="Actual Price", line=dict(color="#159447", width=3), marker=dict(size=7),
+    name="Actual Price", line=dict(color="#159447", width=3), marker=dict(size=6),
     customdata=comparison[["Predicted_Close", "Absolute_Error_USD", "Absolute_Error_Pct"]].to_numpy(),
     hovertemplate="<b>%{x|%d %b %Y}</b><br>Actual: $%{y:,.2f}<br>Estimate: $%{customdata[0]:,.2f}<br>Absolute error: $%{customdata[1]:,.2f}<br>Error: %{customdata[2]:.2f}%<extra></extra>"
 ))
 compare_fig.add_trace(go.Scatter(
     x=comparison["Date"], y=comparison["Predicted_Close"], mode="lines+markers",
-    name="Model / Previous-close Estimate", line=dict(color="#d93636", width=2.5, dash="dash"),
-    marker=dict(size=7),
+    name="Previous-close Estimate", line=dict(color="#d93636", width=2.5, dash="dash"),
+    marker=dict(size=6),
     customdata=comparison[["WTI_Close", "Absolute_Error_USD", "Absolute_Error_Pct"]].to_numpy(),
     hovertemplate="<b>%{x|%d %b %Y}</b><br>Estimate: $%{y:,.2f}<br>Actual: $%{customdata[0]:,.2f}<br>Absolute error: $%{customdata[1]:,.2f}<br>Error: %{customdata[2]:.2f}%<extra></extra>"
 ))
 compare_fig.update_layout(
     height=430, margin=dict(l=10, r=10, t=25, b=10),
     hovermode="x unified", xaxis_title="Trading date", yaxis_title="WTI close (USD/bbl)",
-    legend=dict(orientation="h", y=1.12), template="plotly_white"
+    legend=dict(orientation="h", y=1.12), template="plotly_white",
+    xaxis=dict(rangeslider=dict(visible=True), type="date")
 )
 st.plotly_chart(compare_fig, use_container_width=True)
 
-st.subheader("Prediction Details")
+st.subheader("Prediction Details · Last 30 Days")
 details = comparison[["Date", "Predicted_Close", "WTI_Close", "Absolute_Error_USD", "Absolute_Error_Pct"]].copy()
 details = details.rename(columns={
     "Date": "Trading Date", "Predicted_Close": "Predicted Price (USD)",
@@ -202,9 +199,9 @@ st.dataframe(details.style.format({
 
 if not comparison.empty:
     e1, e2 = st.columns(2)
-    e1.metric("Historical replay MAPE", f"{comparison['Absolute_Error_Pct'].mean():.2f}%")
-    e2.metric("Mean absolute error", f"${comparison['Absolute_Error_USD'].mean():.2f}/bbl")
-    st.caption("These error metrics describe the previous-close benchmark replay, not validated AI model accuracy.")
+    e1.metric("30-day benchmark MAPE", f"{comparison['Absolute_Error_Pct'].mean():.2f}%")
+    e2.metric("30-day mean absolute error", f"${comparison['Absolute_Error_USD'].mean():.2f}/bbl")
+    st.caption("These metrics describe the previous-close benchmark replay, not validated AI model accuracy. Changing the time window does not change the underlying errors.")
 
 st.caption(
     f"Dataset last date: {latest_dataset_date.date()} · "
