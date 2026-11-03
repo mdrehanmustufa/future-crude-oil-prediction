@@ -1,10 +1,12 @@
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, time as dt_time
+from zoneinfo import ZoneInfo
 import json
 import joblib
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
 
@@ -287,29 +289,87 @@ def make_scenario_features(
 
 @st.cache_data(ttl=900, show_spinner=False)
 def latest_yahoo_daily_close(symbol):
-    """Return the latest completed daily close for a market reference."""
+    """Return the latest and previous completed daily closes for a market reference."""
     try:
         history = yf.Ticker(symbol).history(period="10d", interval="1d", auto_adjust=False)
         if history is None or history.empty or "Close" not in history:
-            return None, None, "Yahoo Finance quote unavailable"
+            return None, None, None, "Yahoo Finance quote unavailable"
         closes = history["Close"].dropna()
         if closes.empty:
-            return None, None, "Yahoo Finance quote unavailable"
+            return None, None, None, "Yahoo Finance quote unavailable"
         timestamp = pd.Timestamp(closes.index[-1])
-        return float(closes.iloc[-1]), timestamp.strftime("%d %b %Y"), "Yahoo Finance daily close"
+        previous = float(closes.iloc[-2]) if len(closes) >= 2 else None
+        return float(closes.iloc[-1]), previous, timestamp.strftime("%d %b %Y"), "Yahoo Finance daily close"
     except Exception as exc:
-        return None, None, f"Saved dataset fallback · {type(exc).__name__}"
+        return None, None, None, f"Saved dataset fallback · {type(exc).__name__}"
 
 
-def resolve_market_reference(symbol, fallback_value, fallback_date):
-    value, quote_date, source = latest_yahoo_daily_close(symbol)
+def resolve_market_reference(symbol, fallback_value, fallback_date, fallback_previous=None):
+    value, previous, quote_date, source = latest_yahoo_daily_close(symbol)
     if value is not None and np.isfinite(value) and value > 0:
-        return {"value": float(value), "date": quote_date, "source": source}
+        return {
+            "value": float(value), "previous_close": previous,
+            "date": quote_date, "source": source
+        }
     return {
         "value": float(fallback_value),
+        "previous_close": float(fallback_previous) if fallback_previous is not None else None,
         "date": str(fallback_date),
         "source": "Latest saved dataset value · quote fallback"
     }
+
+
+def next_scheduled_refresh_ist(now=None):
+    """Next GitHub Actions schedule: weekdays at 23:00 UTC (04:30 IST next day)."""
+    ist = ZoneInfo("Asia/Kolkata")
+    now = now or datetime.now(ist)
+    now = now.astimezone(ist)
+    utc_today = now.astimezone(timezone.utc).date()
+    for offset in range(8):
+        run_day = utc_today + timedelta(days=offset)
+        if run_day.weekday() >= 5:
+            continue
+        candidate_utc = datetime.combine(run_day, dt_time(23, 0), tzinfo=timezone.utc)
+        if candidate_utc > now.astimezone(timezone.utc):
+            return candidate_utc.astimezone(ist)
+    raise RuntimeError("Could not calculate the next scheduled refresh.")
+
+
+GPR_SCENARIO_SPECS = [
+    (0, "Calm / no major escalation", 0.05),
+    (1, "Routine diplomatic tension", 0.25),
+    (2, "Direct military clash between countries", 0.50),
+    (3, "Sanctions / trade restrictions", 0.70),
+    (4, "Sustained regional conflict", 0.85),
+    (5, "Major escalation / serious energy-supply threat", 0.97),
+]
+
+
+def build_gpr_scenario_ladder(df, current_value):
+    """Map six illustrative event-severity tiers to the training history's GPR distribution."""
+    values = pd.to_numeric(df.get("GPR_total_lag1m"), errors="coerce").dropna()
+    values = values[np.isfinite(values) & (values >= 0)]
+    if len(values) < 30:
+        raise ValueError("Insufficient historical GPR observations to calibrate the 0–5 scenario scale.")
+    ladder = {}
+    for level, label, percentile in GPR_SCENARIO_SPECS:
+        ladder[level] = {
+            "label": label,
+            "percentile": percentile,
+            "index_value": float(values.quantile(percentile)),
+        }
+    current_percentile = float((values <= float(current_value)).mean())
+    current_level = min(
+        ladder,
+        key=lambda level: abs(ladder[level]["percentile"] - current_percentile)
+    )
+    return ladder, current_level, current_percentile
+
+
+def reset_scenario_to_latest(defaults):
+    """Restore each scenario widget to the latest published reference value."""
+    for key, value in defaults.items():
+        st.session_state[key] = value
 
 
 def reset_scenario_to_latest(defaults):
