@@ -1,5 +1,5 @@
 {
-  "last_successful_run_utc": "2026-11-03T18:56:31.986038+00:00",
+  "last_successful_run_utc": "2026-11-03T19:19:22.262870+00:00",
   "historical_source": "Final_Dataset_AI_dxy_fixed.csv",
   "dataset_rows": 3022,
   "latest_market_date": "2026-11-02",
@@ -37,10 +37,10 @@
           "improvement_vs_zero_pct": 0.408805512070517
         },
         "Ridge regression": {
-          "pooled_mae": 0.021124845353414527,
+          "pooled_mae": 0.021124845353414495,
           "folds_beating_zero": 0,
           "folds": 4,
-          "improvement_vs_zero_pct": -18.001599129654615
+          "improvement_vs_zero_pct": -18.00159912965444
         },
         "ExtraTrees shallow": {
           "pooled_mae": 0.018053786415986095,
