@@ -197,6 +197,27 @@ def load_saved_state():
     }
 
 
+def prototype_stress_multiplier(
+    global_production_value, global_production_reference, gpr_level,
+    supply_elasticity=0.80, gpr_premium_per_level=0.025
+):
+    """Return a clearly illustrative supply/geopolitical scenario multiplier.
+
+    This is a demo-only overlay, not a coefficient learned or validated by the ML model.
+    """
+    production = float(global_production_value)
+    reference = float(global_production_reference)
+    level = int(gpr_level)
+    if not np.isfinite(production) or not np.isfinite(reference) or production <= 0 or reference <= 0:
+        raise ValueError("Production scenario and reference must be finite and positive.")
+    if level < 0 or level > 5:
+        raise ValueError("Prototype GPR level must be between 0 and 5.")
+    supply_impact = ((reference / production) - 1.0) * float(supply_elasticity)
+    supply_multiplier = max(0.50, 1.0 + supply_impact)
+    gpr_impact = float(gpr_premium_per_level) * level
+    return supply_multiplier * (1.0 + gpr_impact), supply_impact, gpr_impact
+
+
 def make_scenario_features(
     state, wti_price_usd, dxy_level, brent_price_usd,
     global_production_value, gpr_index
@@ -805,16 +826,14 @@ with scenario_tab:
         unsafe_allow_html=True
     )
 
-    # Restrict production slider to the central 98% of observed positive training values.
-    # A value such as 64,725 is below the observed positive minimum in this training set.
-    global_prod_min = production_p01
-    global_prod_max = production_p99
-    global_prod_step = max((global_prod_max - global_prod_min) / 250.0, 10.0)
+    # Prototype stress-test controls intentionally allow broader hypothetical supply shocks.
+    # Their price impact is applied as a transparent illustrative overlay below.
+    global_prod_min = 60000.0
+    global_prod_max = 100000.0
+    global_prod_step = 100.0
 
     for key, value in latest_defaults.items():
         st.session_state.setdefault(key, value)
-    if not global_prod_min <= float(st.session_state["scenario_global_production"]) <= global_prod_max:
-        st.session_state["scenario_global_production"] = global_production_reference
 
     st.button(
         "↺ Reset to current references",
@@ -862,28 +881,22 @@ with scenario_tab:
         with st.container(border=True):
             st.markdown("#### 2 · Global supply")
             global_production = st.slider(
-                "World oil production · EIA historical input",
+                "World oil production · prototype stress input",
                 min_value=float(global_prod_min),
                 max_value=float(global_prod_max),
                 step=float(global_prod_step),
                 key="scenario_global_production",
                 help=(
-                    "Uses EIA_world_prod_lag3m, a three-month-lagged historical feature. "
-                    f"The central 98% training range is {production_p01:,.0f}–{production_p99:,.0f}. "
-                    "ExtraTrees does not extrapolate reliably outside its training range."
+                    "Prototype stress control. Lower production increases the illustrative WTI price impact; "
+                    "higher production decreases it. This is a scenario overlay, not an ML-learned elasticity."
                 )
             )
+            supply_change_pct = (global_production / global_production_reference - 1.0) * 100.0
             st.caption(
-                f"Latest model reference: {global_production_reference:,.0f} "
-                f"(historical percentile P{production_percentile_reference * 100:.1f}) · "
-                f"training support P1–P99: {production_p01:,.0f}–{production_p99:,.0f} · "
-                f"full positive history: {production_training_min:,.0f}–{production_training_max:,.0f}. "
-                "Input is lagged by 3 months and is not a live production feed."
-            )
-            st.info(
-                "Values below the model's positive historical minimum are outside training support. "
-                f"For example, 64,725 is below {production_training_min:,.0f}; the model cannot make a trustworthy "
-                "extrapolation there, so the slider is limited to the central historical range."
+                f"Model reference: {global_production_reference:,.0f} · "
+                f"Scenario change: {supply_change_pct:+.1f}% · "
+                "Historical feature is lagged by 3 months. Prototype slider intentionally allows values "
+                "outside the historical training range for stress testing."
             )
 
         with st.container(border=True):
@@ -893,7 +906,7 @@ with scenario_tab:
                 options=list(range(6)),
                 format_func=lambda level: f"{level} · {gpr_ladder[level]['label']}",
                 key="scenario_gpr_level",
-                help="These are illustrative scenario tiers. Each tier maps to a percentile of the model's historical GPR index distribution."
+                help="Prototype stress control: each level adds a stronger illustrative oil-risk premium on top of the ML estimate."
             )
             gpr_index = (
                 gpr_reference
@@ -906,12 +919,11 @@ with scenario_tab:
                 f"Historical distribution · P{gpr_ladder[gpr_level]['percentile'] * 100:.0f}"
             )
             st.caption(
-                "0 = calm conditions · 1 = routine diplomatic tension · 2 = direct military clash · "
-                "3 = sanctions/trade restrictions · 4 = sustained regional conflict · "
-                "5 = major escalation or serious energy-supply threat. "
-                f"Latest stored GPR rank: P{gpr_current_percentile * 100:.0f}; "
-                f"current conditions are mapped to tier {gpr_current_level}. The underlying GPR series is one month lagged. "
-                "GPR measures newspaper coverage share, not a literal event-severity rating."
+                "0 = no added geopolitical premium · 1 = low tension · 2 = military clash · "
+                "3 = sanctions/restrictions · 4 = sustained regional conflict · "
+                "5 = major escalation / energy-supply threat. "
+                "Prototype overlay adds 2.5% per level (12.5% at level 5). "
+                "This is deliberately illustrative, not a fitted causal coefficient."
             )
 
     with result_col:
@@ -937,19 +949,31 @@ with scenario_tab:
                     global_production, gpr_index
                 )
 
+                # Prototype-only transparent stress overlay, deliberately separate from ML.
+                # A 1% supply decline adds 0.8% to the scenario price; a 1% supply rise
+                # subtracts 0.8%. Each geopolitical tier adds another 2.5%.
+                prototype_multiplier, supply_impact_pct, gpr_impact_pct = prototype_stress_multiplier(
+                    global_production, global_production_reference, gpr_level
+                )
+                supply_multiplier = 1.0 + supply_impact_pct
+
                 horizon_results = []
                 for horizon in SCENARIO_HORIZONS:
                     horizon_model = models[horizon]["pipeline"]
                     ref_return = float(horizon_model.predict(base_x)[0])
-                    whatif_return = float(horizon_model.predict(scenario_x)[0])
+                    whatif_return_ml = float(horizon_model.predict(scenario_x)[0])
                     ref_price = base_close * (1.0 + ref_return)
-                    whatif_price = scenario_close * (1.0 + whatif_return)
+                    whatif_price_ml = scenario_close * (1.0 + whatif_return_ml)
+                    whatif_price = whatif_price_ml * prototype_multiplier
+                    whatif_return = whatif_price / scenario_close - 1.0
                     horizon_results.append({
                         "horizon": horizon,
                         "reference_price": ref_price,
                         "scenario_price": whatif_price,
+                        "ml_scenario_price": whatif_price_ml,
                         "reference_return": ref_return,
                         "scenario_return": whatif_return,
+                        "ml_scenario_return": whatif_return_ml,
                     })
 
                 selected = next(item for item in horizon_results if item["horizon"] == chosen_horizon)
@@ -965,7 +989,7 @@ with scenario_tab:
                     raise ValueError("Model returned an invalid scenario estimate.")
 
                 st.metric(
-                    f"Scenario WTI estimate · {chosen_horizon} sessions",
+                    f"Illustrative WTI scenario estimate · {chosen_horizon} sessions",
                     f"USD {scenario_price:,.2f}/bbl",
                     delta=f"USD {delta_price:+,.2f} vs reset case"
                 )
@@ -975,10 +999,17 @@ with scenario_tab:
                     delta=f"{delta_return_pp:+.3f} percentage points vs reset case"
                 )
                 st.caption(
-                    f"This is the model's cumulative percentage change over {chosen_horizon} trading sessions, "
-                    "measured from the changed scenario's WTI reference price. It is not profit or a guaranteed return. "
-                    f"Reset/reference estimate: USD {reference_price:,.2f}/bbl · "
-                    f"Changed-scenario estimate: USD {scenario_price:,.2f}/bbl."
+                    "Prototype output = existing ML scenario estimate + transparent stress overlay. "
+                    "It is illustrative, not a validated ML forecast or guaranteed market move."
+                )
+                impact_cols = st.columns(3)
+                impact_cols[0].metric("Supply stress impact", f"{supply_impact_pct * 100:+.1f}%")
+                impact_cols[1].metric("Geopolitical premium", f"{gpr_impact_pct * 100:+.1f}%")
+                impact_cols[2].metric("Combined overlay", f"{(prototype_multiplier - 1.0) * 100:+.1f}%")
+                st.caption(
+                    f"ML-only scenario: USD {selected['ml_scenario_price']:,.2f}/bbl · "
+                    f"Prototype stress result: USD {scenario_price:,.2f}/bbl · "
+                    f"Reset reference: USD {reference_price:,.2f}/bbl."
                 )
 
                 # Test all six GPR levels against the same selected market assumptions.
@@ -995,56 +1026,44 @@ with scenario_tab:
                         global_production, level_gpr
                     )
                     level_return = float(models[chosen_horizon]["pipeline"].predict(level_x)[0])
-                    level_price = level_close * (1.0 + level_return)
+                    level_price_ml = level_close * (1.0 + level_return)
+                    level_multiplier, _, _ = prototype_stress_multiplier(
+                        global_production, global_production_reference, level
+                    )
+                    level_price = level_price_ml * level_multiplier
                     gpr_sensitivity_rows.append({
                         "Level": level,
                         "Scenario": gpr_ladder[level]["label"],
                         "Mapped GPR index": level_gpr,
-                        "Estimated WTI close": level_price,
+                        "ML-only estimate": level_price_ml,
+                        "Illustrative WTI close": level_price,
+                        "Prototype GPR premium (%)": 2.5 * level,
                     })
                 gpr_sensitivity_df = pd.DataFrame(gpr_sensitivity_rows)
-                level_zero_price = float(gpr_sensitivity_df.loc[gpr_sensitivity_df["Level"].eq(0), "Estimated WTI close"].iloc[0])
+                level_zero_price = float(gpr_sensitivity_df.loc[gpr_sensitivity_df["Level"].eq(0), "Illustrative WTI close"].iloc[0])
                 gpr_sensitivity_df["Change vs level 0 (USD)"] = (
-                    gpr_sensitivity_df["Estimated WTI close"] - level_zero_price
+                    gpr_sensitivity_df["Illustrative WTI close"] - level_zero_price
                 )
                 gpr_sensitivity_df["Change vs level 0 (%)"] = (
                     gpr_sensitivity_df["Change vs level 0 (USD)"] / level_zero_price * 100.0
                     if level_zero_price else 0.0
                 )
-                st.markdown("**GPR impact check · all other inputs held constant**")
+                st.markdown("**Prototype GPR stress test · all other inputs held constant**")
                 st.dataframe(
                     gpr_sensitivity_df.style.format({
                         "Mapped GPR index": "{:,.2f}",
-                        "Estimated WTI close": "USD {:,.2f}",
+                        "ML-only estimate": "USD {:,.2f}",
+                        "Illustrative WTI close": "USD {:,.2f}",
+                        "Prototype GPR premium (%)": "{:.1f}%",
                         "Change vs level 0 (USD)": "{:+,.2f}",
                         "Change vs level 0 (%)": "{:+.3f}%",
                     }),
                     width="stretch", hide_index=True
                 )
-                distinct_gpr_outputs = gpr_sensitivity_df["Estimated WTI close"].round(4).nunique()
                 max_gpr_impact_pct = float(gpr_sensitivity_df["Change vs level 0 (%)"].abs().max())
-                if max_gpr_impact_pct < 0.10:
-                    st.warning(
-                        f"GPR 0–5 changes the estimate by at most {max_gpr_impact_pct:.3f}% for this horizon. "
-                        "This is genuinely weak sensitivity in the current trained model, not proof that geopolitical "
-                        "events have no effect on oil. The input is a one-month-lagged, general newspaper GPR index; "
-                        "it does not distinguish oil-producing countries or actual oil-export/shipping disruptions. "
-                        "Do not interpret this output as an oil-specific geopolitical shock forecast."
-                    )
-                elif distinct_gpr_outputs == 1:
-                    st.warning(
-                        "GPR changes across all six levels, but this fitted tree model returns the same estimate "
-                        "for this market setup. Its current tree leaves are insensitive to GPR here."
-                    )
-                else:
-                    st.caption(
-                        f"Observed model sensitivity across the ladder: {max_gpr_impact_pct:.3f}% from level 0. "
-                        "This is an empirical response of the current fitted model, not a guaranteed market effect."
-                    )
-                st.markdown(
-                    "[Research direction: daily AI-GPR with Oil Threats and Oil Acts components](https://www.matteoiacoviello.com/ai_gpr.html). "
-                    "Those oil-specific features are not yet part of this model's trained 64 inputs and require historical "
-                    "alignment, retraining and chronological validation before they can drive its estimate."
+                st.info(
+                    "Prototype sensitivity is intentionally amplified for demonstration: the table includes the ML-only "
+                    "estimate and the separate illustrative GPR premium. Do not describe the overlay as a trained model effect."
                 )
 
                 graph_horizons = [item["horizon"] for item in horizon_results]

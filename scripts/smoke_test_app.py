@@ -82,9 +82,9 @@ tree = ast.parse(APP.read_text(encoding="utf-8"))
 functions = [
     node for node in tree.body
     if isinstance(node, ast.FunctionDef)
-    and node.name == "make_scenario_features"
+    and node.name in {"make_scenario_features", "prototype_stress_multiplier"}
 ]
-assert len(functions) == 1
+assert {node.name for node in functions} == {"make_scenario_features", "prototype_stress_multiplier"}
 
 namespace = {
     "pd": pd,
@@ -96,18 +96,17 @@ namespace = {
 module = ast.Module(body=functions, type_ignores=[])
 exec(compile(module, str(APP), "exec"), namespace)
 scenario_function = namespace["make_scenario_features"]
+stress_multiplier = namespace["prototype_stress_multiplier"]
 
 df = fe.standardize(pd.read_csv(DATA, parse_dates=["Date"]))
 production_values = pd.to_numeric(df["EIA_world_prod_lag3m"], errors="coerce").dropna()
 production_values = production_values[production_values > 0]
-production_p01 = float(production_values.quantile(0.01))
-production_p99 = float(production_values.quantile(0.99))
-assert production_p01 <= initial_slider_values[3] <= production_p99
-assert 64725 < production_values.min(), "Test scenario 64,725 should be recognized as out of training support."
 source_text = APP.read_text(encoding="utf-8")
-assert "Estimated cumulative price change" in source_text
-assert "Change vs level 0 (%)" in source_text
-assert "Oil Threats and Oil Acts" in source_text
+assert initial_slider_values[3] == float(np.clip(initial_slider_values[3], 60000.0, 100000.0))
+assert "Illustrative WTI scenario estimate" in source_text
+assert "Prototype GPR premium (%)" in source_text
+assert "prototype_stress_multiplier" in source_text
+assert "not a fitted causal coefficient" in source_text
 artifacts = joblib.load(MODEL)
 with open(STATUS, encoding="utf-8") as handle:
     status = json.load(handle)
@@ -138,6 +137,17 @@ base_brent = float(df.loc[idx, "CMD_brent_lag1"])
 base_global_production = float(df.loc[idx, "EIA_world_prod_lag3m"])
 base_gpr = float(df.loc[idx, "GPR_total_lag1m"])
 
+# The prototype overlay must visibly respond in the requested direction and accept 64,725.
+low_supply_mult, low_supply_impact, _ = stress_multiplier(64725.0, base_global_production, 0)
+high_supply_mult, high_supply_impact, _ = stress_multiplier(84327.0, base_global_production, 0)
+gpr_zero_mult, _, gpr_zero_impact = stress_multiplier(base_global_production, base_global_production, 0)
+gpr_five_mult, _, gpr_five_impact = stress_multiplier(base_global_production, base_global_production, 5)
+assert low_supply_mult > high_supply_mult, "Lower global supply must produce a higher WTI scenario."
+assert low_supply_impact > 0 and high_supply_impact < 0
+assert gpr_zero_mult == 1.0 and gpr_zero_impact == 0.0
+assert gpr_five_mult > gpr_zero_mult and np.isclose(gpr_five_impact, 0.125)
+assert low_supply_mult > 1.0 and gpr_five_mult > 1.0
+
 baseline_x, baseline_close = scenario_function(
     state, base_wti, base_dxy, base_brent, base_global_production, base_gpr
 )
@@ -148,6 +158,11 @@ assert np.allclose(
     rtol=1e-6, atol=1e-8, equal_nan=True
 )
 assert np.isclose(baseline_close, base_wti)
+low_supply_features, _ = scenario_function(
+    state, base_wti, base_dxy, base_brent, 64725.0, base_gpr
+)
+assert low_supply_features.shape == (1, len(fe.EXPANDED_FEATURES))
+assert np.isfinite(low_supply_features.to_numpy(dtype=float)).all()
 
 scenario_specs = [
     ("WTI", scenario_function(state, base_wti * 1.10, base_dxy, base_brent, base_global_production, base_gpr), ["WTI_"]),
