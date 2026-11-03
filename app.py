@@ -243,25 +243,19 @@ with snap4:
         "Difference between benchmark prices", "Market context"
     )
 
-with st.expander("WTI and Brent: what is the difference?"):
-    left, right = st.columns(2)
-    with left:
-        st.markdown("**WTI — West Texas Intermediate**")
-        st.write(
-            "A light, sweet crude benchmark produced in the United States. "
-            "Its futures contract is linked to delivery at Cushing, Oklahoma. "
-            "It is widely used as a reference for the North American oil market."
-        )
-    with right:
-        st.markdown("**Brent crude**")
-        st.write(
-            "A light, sweet crude benchmark based on North Sea crude streams. "
-            "It is the main reference for much of the seaborne/global crude market."
-        )
+with st.expander("What do the oil benchmarks mean?"):
+    st.markdown(
+        "**WTI:** US crude-oil benchmark. **Brent:** global seaborne crude-oil benchmark. "
+        "**DXY:** US Dollar Index, measuring the dollar against a basket of major currencies."
+    )
+    st.markdown(
+        "**Urals:** a Russian export crude blend. **ESPO:** a Russian crude blend shipped through "
+        "the East Siberia–Pacific Ocean pipeline, mainly toward Asia-Pacific markets."
+    )
     st.caption(
-        "The two prices can differ because crude quality, transport costs, delivery location "
-        "and regional supply-demand conditions differ. This app displays both benchmarks, "
-        "but the saved prediction model currently forecasts WTI only."
+        "Urals, ESPO, European natural gas (TTF), wheat, urea, TPU and global-production indicators "
+        "remain among the model's 64 trained features. They are held at their latest stored values "
+        "in this simplified live scenario panel; they have not been removed from the model."
     )
 
 if market_date > feature_date:
