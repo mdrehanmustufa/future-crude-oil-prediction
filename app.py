@@ -197,6 +197,27 @@ def load_saved_state():
     }
 
 
+def prototype_stress_multiplier(
+    global_production_value, global_production_reference, gpr_level,
+    supply_elasticity=0.80, gpr_premium_per_level=0.025
+):
+    """Return a clearly illustrative supply/geopolitical scenario multiplier.
+
+    This is a demo-only overlay, not a coefficient learned or validated by the ML model.
+    """
+    production = float(global_production_value)
+    reference = float(global_production_reference)
+    level = int(gpr_level)
+    if not np.isfinite(production) or not np.isfinite(reference) or production <= 0 or reference <= 0:
+        raise ValueError("Production scenario and reference must be finite and positive.")
+    if level < 0 or level > 5:
+        raise ValueError("Prototype GPR level must be between 0 and 5.")
+    supply_impact = ((reference / production) - 1.0) * float(supply_elasticity)
+    supply_multiplier = max(0.50, 1.0 + supply_impact)
+    gpr_impact = float(gpr_premium_per_level) * level
+    return supply_multiplier * (1.0 + gpr_impact), supply_impact, gpr_impact
+
+
 def make_scenario_features(
     state, wti_price_usd, dxy_level, brent_price_usd,
     global_production_value, gpr_index
@@ -931,13 +952,10 @@ with scenario_tab:
                 # Prototype-only transparent stress overlay, deliberately separate from ML.
                 # A 1% supply decline adds 0.8% to the scenario price; a 1% supply rise
                 # subtracts 0.8%. Each geopolitical tier adds another 2.5%.
-                supply_impact_pct = (
-                    (global_production_reference / float(global_production)) - 1.0
-                ) * 0.80
-                supply_multiplier = max(0.50, 1.0 + supply_impact_pct)
-                gpr_impact_pct = 0.025 * int(gpr_level)
-                gpr_multiplier = 1.0 + gpr_impact_pct
-                prototype_multiplier = supply_multiplier * gpr_multiplier
+                prototype_multiplier, supply_impact_pct, gpr_impact_pct = prototype_stress_multiplier(
+                    global_production, global_production_reference, gpr_level
+                )
+                supply_multiplier = 1.0 + supply_impact_pct
 
                 horizon_results = []
                 for horizon in SCENARIO_HORIZONS:
@@ -1009,7 +1027,10 @@ with scenario_tab:
                     )
                     level_return = float(models[chosen_horizon]["pipeline"].predict(level_x)[0])
                     level_price_ml = level_close * (1.0 + level_return)
-                    level_price = level_price_ml * supply_multiplier * (1.0 + 0.025 * level)
+                    level_multiplier, _, _ = prototype_stress_multiplier(
+                        global_production, global_production_reference, level
+                    )
+                    level_price = level_price_ml * level_multiplier
                     gpr_sensitivity_rows.append({
                         "Level": level,
                         "Scenario": gpr_ladder[level]["label"],
