@@ -110,8 +110,8 @@ production_values = pd.to_numeric(df["EIA_world_prod_lag3m"], errors="coerce").d
 production_values = production_values[production_values > 0]
 source_text = APP.read_text(encoding="utf-8")
 assert initial_slider_values[3] == float(np.clip(initial_slider_values[3], 60000.0, 100000.0))
-assert "Illustrative WTI scenario estimate" in source_text
-assert "Prototype GPR premium (%)" in source_text
+assert "WTI scenario price" in source_text
+assert "GPR premium vs reset (%)" in source_text
 assert "prototype_stress_multiplier" in source_text
 assert "not a fitted causal coefficient" in source_text
 artifacts = joblib.load(MODEL)
