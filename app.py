@@ -28,63 +28,58 @@ st.markdown("""
 <style>
 :root { color-scheme: light; }
 html, body, [data-testid="stAppViewContainer"] {
-    background: #f3f6fb !important;
-    color: #172b46 !important;
+    background: #ffffff !important;
+    color: #202a35 !important;
 }
-[data-testid="stHeader"] { background: transparent !important; }
-.block-container {max-width: 1480px; padding-top: 1.4rem; padding-bottom: 3rem;}
+[data-testid="stHeader"] { background: rgba(255,255,255,.92) !important; }
+.block-container {max-width: 1480px; padding-top: 1.15rem; padding-bottom: 3rem;}
 [data-testid="stMarkdownContainer"], [data-testid="stMetricLabel"],
-[data-testid="stMetricValue"], [data-testid="stCaptionContainer"] {
-    color: #172b46;
-}
+[data-testid="stMetricValue"], [data-testid="stCaptionContainer"] { color: #202a35; }
 .hero {
-    background: linear-gradient(115deg, #102a4c 0%, #1d4772 65%, #28618c 100%);
-    border-radius: 18px; padding: 1.7rem 2rem; margin: 0 0 1.25rem 0;
-    box-shadow: 0 10px 28px rgba(16,42,76,.14);
+    background: #ffffff; border: 1px solid #e9e4d8; border-left: 6px solid #b89a5a;
+    border-radius: 16px; padding: 1.55rem 1.8rem; margin: 0 0 1.15rem 0;
+    box-shadow: 0 5px 20px rgba(30,35,40,.045);
 }
-.hero .eyebrow {color:#bcd6ef; font-size:.75rem; font-weight:700;
-    letter-spacing:.13em; text-transform:uppercase;}
-.hero h1 {color:#fff !important; font-size:2.2rem; margin:.35rem 0 .35rem 0;
-    line-height:1.15;}
-.hero p {color:#e3edf7 !important; margin:.25rem 0 0 0; font-size:1rem;}
-.hero .note {color:#c7d9eb !important; font-size:.82rem; margin-top:.75rem;}
+.hero .eyebrow {color:#927640; font-size:.72rem; font-weight:750;
+    letter-spacing:.14em; text-transform:uppercase;}
+.hero h1 {color:#1d2935 !important; font-size:2.15rem; margin:.32rem 0 .3rem 0;
+    line-height:1.15; letter-spacing:-.035em;}
+.hero p {color:#56616d !important; margin:.25rem 0 0 0; font-size:1rem;}
+.hero .note {color:#7a838b !important; font-size:.78rem; margin-top:.65rem;}
 .price-card {
-    background:#fff; border:1px solid #dce5ef; border-radius:15px;
-    padding:1.15rem 1.25rem; min-height:145px;
-    box-shadow:0 4px 16px rgba(20,45,75,.045);
+    background:#fff; border:1px solid #e5e6e7; border-radius:14px;
+    padding:1.1rem 1.2rem; min-height:140px;
+    box-shadow:0 4px 16px rgba(20,30,40,.035);
 }
-.price-card .label {color:#63758d; font-size:.82rem; font-weight:650;}
-.price-card .value {color:#132c4c; font-size:2rem; font-weight:760;
+.price-card .label {color:#69737d; font-size:.81rem; font-weight:650;}
+.price-card .value {color:#1e2933; font-size:1.9rem; font-weight:760;
     letter-spacing:-.035em; margin:.25rem 0;}
-.price-card .meta {color:#657891; font-size:.78rem;}
+.price-card .meta {color:#69737d; font-size:.77rem;}
 .price-card .tag {display:inline-block; padding:.18rem .5rem; border-radius:30px;
-    background:#eaf2fb; color:#315d87; font-size:.70rem; font-weight:700;
-    margin-top:.4rem;}
-.section-lead {
-    background:#eaf1f8; border-left:4px solid #4277a8; border-radius:8px;
-    padding:.8rem 1rem; color:#314963; margin:.45rem 0 1rem 0;
-}
-.small-muted {color:#64758b; font-size:.85rem;}
-.callout-good {background:#eaf5ef; border:1px solid #c8e6d3; color:#235c3e;
+    background:#f5f0e5; color:#80652f; font-size:.69rem; font-weight:700; margin-top:.4rem;}
+.section-lead {background:#faf9f6; border-left:4px solid #b89a5a;
+    border-radius:8px; padding:.8rem 1rem; color:#4c555e; margin:.45rem 0 1rem 0;}
+.small-muted {color:#707982; font-size:.84rem;}
+.callout-good {background:#eff7f1; border:1px solid #cfe5d4; color:#285b39;
     padding:.8rem 1rem; border-radius:9px;}
-.callout-warn {background:#fff6df; border:1px solid #f0dfac; color:#735510;
+.callout-warn {background:#fff8e9; border:1px solid #ead9aa; color:#70551b;
     padding:.8rem 1rem; border-radius:9px;}
-div[data-testid="stTabs"] button {font-weight:650;}
-div[data-testid="stMetric"] {
-    background:#fff; border:1px solid #dce5ef; border-radius:12px;
-    padding:.75rem 1rem; box-shadow:0 3px 12px rgba(20,45,75,.04);
-}
-div[data-testid="stDataFrame"] {background:#fff; border-radius:12px;}
-h1, h2, h3, h4 {color:#163353 !important;}
+div[data-testid="stTabs"] button {font-weight:700; color:#65707a;}
+div[data-testid="stTabs"] button[aria-selected="true"] {color:#222d36; border-bottom-color:#b89a5a;}
+div[data-testid="stMetric"] {background:#fff; border:1px solid #e5e6e7;
+    border-radius:12px; padding:.75rem 1rem; box-shadow:0 3px 12px rgba(20,30,40,.035);}
+div[data-testid="stDataFrame"] {background:#fff; border:1px solid #e8e8e8; border-radius:12px;}
+h1, h2, h3, h4 {color:#1f2b35 !important;}
+.stButton > button {border-radius:9px; border-color:#c7b17f;}
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("""
 <section class="hero">
-  <div class="eyebrow">Energy markets · Research dashboard</div>
-  <h1>Crude Oil Market Intelligence</h1>
-  <p>WTI & Brent market benchmarks, multi-horizon reference estimates and what-if analysis.</p>
-  <div class="note">Educational research tool only · Not investment or trading advice</div>
+  <div class="eyebrow">Energy markets · Interactive research prototype</div>
+  <h1>Crude Oil Scenario Intelligence</h1>
+  <p>Explore how WTI market, supply, currency and geopolitical assumptions change a trained model's conditional estimate.</p>
+  <div class="note">64 trained input features · 13 scenario controls · Historical model evaluation · Research use only</div>
 </section>
 """, unsafe_allow_html=True)
 
@@ -259,6 +254,59 @@ def make_scenario_features(state, wti_shock_pct, dxy_move_pct,
     return scenario_x, float(scenario_df.at[idx, "WTI_Close"])
 
 
+SCENARIO_DEFAULTS = {
+    "scenario_wti_shock": 0.0,
+    "scenario_dxy_move": 0.0,
+    "scenario_inventory_change": 0,
+    "scenario_rig_change": 0,
+    "scenario_horizon": 5,
+    "scenario_brent_move": 0.0,
+    "scenario_urals_move": 0.0,
+    "scenario_espo_move": 0.0,
+    "scenario_ttf_move": 0.0,
+    "scenario_wheat_move": 0.0,
+    "scenario_urea_move": 0.0,
+    "scenario_gpr_move": 0.0,
+    "scenario_tpu_move": 0.0,
+    "scenario_production_move": 0.0,
+}
+SCENARIO_PRESETS = {
+    "Custom / manual": None,
+    "Reset · current conditions": {key: value for key, value in SCENARIO_DEFAULTS.items() if key != "scenario_horizon"},
+    "Geopolitical escalation": {
+        "scenario_gpr_move": 50.0, "scenario_tpu_move": 15.0,
+        "scenario_brent_move": 5.0, "scenario_urals_move": 4.0,
+        "scenario_espo_move": 4.0, "scenario_production_move": -1.0,
+        "scenario_inventory_change": -1000, "scenario_rig_change": -5,
+    },
+    "Supply disruption · proxy scenario": {
+        "scenario_gpr_move": 25.0, "scenario_tpu_move": 5.0,
+        "scenario_brent_move": 8.0, "scenario_urals_move": 8.0,
+        "scenario_espo_move": 8.0, "scenario_production_move": -3.0,
+        "scenario_inventory_change": -2500, "scenario_rig_change": -5,
+    },
+    "Supply expansion · inventory build": {
+        "scenario_inventory_change": 5000, "scenario_rig_change": 10,
+        "scenario_production_move": 2.0, "scenario_brent_move": -5.0,
+        "scenario_urals_move": -4.0, "scenario_espo_move": -4.0,
+    },
+    "Stronger US dollar": {
+        "scenario_dxy_move": 3.0, "scenario_brent_move": -2.0,
+        "scenario_urals_move": -2.0, "scenario_espo_move": -2.0,
+        "scenario_ttf_move": -5.0, "scenario_wheat_move": -3.0,
+        "scenario_urea_move": -2.0,
+    },
+}
+def apply_scenario_preset():
+    selected = st.session_state.get("scenario_preset", "Custom / manual")
+    values = SCENARIO_PRESETS.get(selected)
+    if values is None:
+        return
+    for key, value in SCENARIO_DEFAULTS.items():
+        if key != "scenario_horizon":
+            st.session_state[key] = values.get(key, value)
+
+
 def price_card(label, value, date_label, description, tag):
     safe_value = value if value is not None else "Not available"
     st.markdown(
@@ -366,7 +414,8 @@ labels = {
     5: "5 trading sessions", 10: "10 trading sessions",
     20: "20 trading sessions"
 }
-market_tab, scenario_tab = st.tabs(["01 · Market forecast", "02 · What-if analysis"])
+SCENARIO_HORIZONS = [5, 10, 20]
+scenario_tab, market_tab = st.tabs(["01 · Scenario Lab", "02 · Forecast & Evaluation"])
 
 with market_tab:
     st.subheader("Next trading session · WTI reference estimate")
@@ -472,6 +521,34 @@ with market_tab:
             "is a benchmark quote; the model's CMD_brent_lag1 is a separate stored lagged feature."
         )
 
+    st.subheader("Historical evaluation · actual vs previous-close benchmark")
+    history = df[["Date", "WTI_Close"]].dropna().sort_values("Date").copy()
+    history["Previous_Close_Benchmark"] = history["WTI_Close"].shift(1)
+    history_start = history["Date"].max() - pd.Timedelta(days=90)
+    history_view = history.loc[history["Date"] >= history_start].dropna(subset=["Previous_Close_Benchmark"])
+    if not history_view.empty:
+        fig, ax = plt.subplots(figsize=(13, 4.8))
+        fig.patch.set_facecolor("white")
+        ax.set_facecolor("white")
+        ax.plot(history_view["Date"], history_view["WTI_Close"], color="#23865b",
+                linewidth=2.5, label="Actual WTI close")
+        ax.plot(history_view["Date"], history_view["Previous_Close_Benchmark"], color="#c6534b",
+                linewidth=2, linestyle="--", label="Previous-close benchmark estimate")
+        ax.set_ylabel("WTI close (USD/bbl)")
+        ax.set_xlabel("Trading date")
+        ax.grid(alpha=.18, color="#9aa0a6")
+        ax.spines[["top", "right"]].set_visible(False)
+        ax.legend(frameon=False, ncol=2, loc="upper left")
+        fig.tight_layout()
+        st.pyplot(fig, clear_figure=True)
+        plt.close(fig)
+        st.caption(
+            f"Showing available observations from {history_view['Date'].min().date()} to {history_view['Date'].max().date()}. "
+            "The red dashed line is a retrospective previous-close benchmark replay, not historical predictions made by today's trained ML model."
+        )
+    else:
+        st.info("There are not enough historical observations to display the benchmark replay.")
+
     with st.expander("Historical benchmark trend"):
         history = df[["Date", "WTI_Close"]].dropna().tail(252)
         fig, ax = plt.subplots(figsize=(12, 4))
@@ -491,81 +568,93 @@ with market_tab:
         plt.close(fig)
 
 with scenario_tab:
-    st.subheader("Build a hypothetical market scenario")
-    st.write(
-        "Change the market, macro, geopolitical and supply assumptions that are included in the 64-feature model. The app recalculates dependent "
-        "features on a temporary copy of the data; the saved market history and trained model remain unchanged."
+    st.subheader("Interactive what-if scenario builder")
+    st.markdown(
+        '<div class="section-lead"><strong>How it works:</strong> Choose a ready-made market scenario or adjust the inputs yourself. '
+        'The app updates the 64-feature input row and sends it to the saved 5-, 10- or 20-session ExtraTrees model. '
+        'The original dataset and trained model are not overwritten.</div>',
+        unsafe_allow_html=True
     )
 
+    for key, value in SCENARIO_DEFAULTS.items():
+        st.session_state.setdefault(key, value)
+    st.session_state.setdefault("scenario_preset", "Custom / manual")
+
+    st.selectbox(
+        "Load a demo scenario",
+        options=list(SCENARIO_PRESETS.keys()),
+        key="scenario_preset",
+        on_change=apply_scenario_preset,
+        help="Presets are illustrative assumption bundles. They are not claims about current events."
+    )
+    st.caption("After loading a preset, change any slider to create your own combination.")
+
     with st.container(border=True):
-        st.markdown("**Scenario controls**")
-        left, right = st.columns(2, gap="large")
-        with left:
+        st.markdown("#### 1 · WTI market & currency")
+        col1, col2 = st.columns(2, gap="large")
+        with col1:
             wti_shock = st.slider(
-                "1. WTI price change (%)",
-                min_value=-20.0, max_value=20.0, value=0.0, step=0.5,
-                help="Hypothetical percentage move applied to the latest complete WTI OHLC row."
+                "WTI reference price shock (%)", min_value=-20.0, max_value=20.0,
+                step=0.5, key="scenario_wti_shock",
+                help="Applies a hypothetical move to the latest complete WTI OHLC row and recalculates price-history features."
             )
-            st.caption("WTI = US crude benchmark. Example: +5% means the reference WTI price is raised by 5%.")
             dxy_move = st.slider(
-                "2. US Dollar Index (DXY) change (%)",
-                min_value=-10.0, max_value=10.0, value=0.0, step=0.25,
-                help="Hypothetical percentage move in the US Dollar Index, a basket measuring the dollar against major currencies."
+                "US Dollar Index (DXY) change (%)", min_value=-10.0, max_value=10.0,
+                step=0.25, key="scenario_dxy_move",
+                help="Changes the latest DXY level and its derived return features."
             )
-            st.caption("A stronger dollar can pressure dollar-priced commodities, but the relationship is not guaranteed.")
-        with right:
+        with col2:
+            st.markdown("**Commodity benchmark inputs**")
+            brent_move = st.slider("Brent-linked price change (%)", -30.0, 30.0, step=1.0, key="scenario_brent_move")
+            urals_move = st.slider("Urals crude price change (%)", -30.0, 30.0, step=1.0, key="scenario_urals_move")
+            espo_move = st.slider("ESPO crude price change (%)", -30.0, 30.0, step=1.0, key="scenario_espo_move")
+
+    with st.container(border=True):
+        st.markdown("#### 2 · Supply, production & inventories")
+        col1, col2, col3 = st.columns(3, gap="medium")
+        with col1:
             inventory_change = st.number_input(
-                "3. US crude inventory change (thousand barrels)",
-                min_value=-50000, max_value=50000, value=0, step=1000,
-                help="Positive means more crude stored; negative means an inventory draw."
+                "US commercial crude stocks (thousand barrels)",
+                min_value=-50000, max_value=50000, step=1000,
+                key="scenario_inventory_change",
+                help="Positive = inventory build; negative = inventory draw. This is commercial stock, not Strategic Petroleum Reserve."
             )
-            st.caption("Example: +2,000 means inventories rise by 2 million barrels. This is a weekly US stock measure.")
+        with col2:
             rig_change = st.number_input(
-                "4. US oil rig-count change (rigs)",
-                min_value=-150, max_value=150, value=0, step=5,
-                help="Change in active US oil-directed drilling rigs; the stored rig series is carried forward between updates."
+                "Active US oil rig-count change", min_value=-150, max_value=150,
+                step=5, key="scenario_rig_change",
+                help="Hypothetical change in active oil-directed drilling rigs."
             )
-            st.caption("More active rigs can indicate future supply capacity, but production does not change immediately one-for-one.")
-
-        chosen_horizon = st.selectbox(
-            "Forecast horizon", HORIZONS, index=0, format_func=lambda h: labels[h]
-        )
-
-    st.markdown("**How to read the other market factors**")
-    info1, info2 = st.columns(2)
-    with info1:
-        st.info(
-            "**DXY:** US Dollar Index. It tracks the dollar against a basket of major currencies. "
-            "Because oil is priced in dollars, currency strength can affect international purchasing power."
-        )
-    with info2:
-        st.info(
-            "**Inventory & rigs:** Inventory measures stored crude; rig count measures active drilling rigs. "
-            "They are supply-side indicators, not instant measures of barrels produced."
-        )
-
-    with st.expander("Advanced assumptions · commodity markets, geopolitics and global supply"):
-        st.caption(
-            "These nine controls adjust the historical lagged input values used by this model. "
-            "They are hypothetical shocks, not live market feeds."
-        )
-        adv1, adv2, adv3 = st.columns(3)
-        with adv1:
-            brent_move = st.slider("Brent-linked commodity price (%)", -30.0, 30.0, 0.0, 1.0)
-            urals_move = st.slider("Urals crude price (%)", -30.0, 30.0, 0.0, 1.0)
-            espo_move = st.slider("ESPO crude price (%)", -30.0, 30.0, 0.0, 1.0)
-        with adv2:
-            ttf_move = st.slider("European natural gas · TTF (%)", -30.0, 30.0, 0.0, 1.0)
-            wheat_move = st.slider("Wheat price (%)", -30.0, 30.0, 0.0, 1.0)
-            urea_move = st.slider("Urea / fertilizer price (%)", -30.0, 30.0, 0.0, 1.0)
-        with adv3:
-            gpr_move = st.slider(
-                "Geopolitical Risk Index · GPR (%)", -50.0, 100.0, 0.0, 5.0,
-                help="Applies the same proportional shock to total GPR, threats and acts indices."
-            )
-            tpu_move = st.slider("Trade Policy Uncertainty · TPU (%)", -50.0, 100.0, 0.0, 5.0)
+        with col3:
             production_move = st.slider(
-                "Global oil production · 3-month-lagged (%)", -5.0, 5.0, 0.0, 0.5
+                "Global oil production change (%)", -5.0, 5.0, step=0.5,
+                key="scenario_production_move",
+                help="Applies a shock to the stored three-month-lagged global production input."
+            )
+        st.caption("Inventory is in kbbl (thousand barrels). For example, +2,000 kbbl = +2 million barrels.")
+
+    with st.container(border=True):
+        st.markdown("#### 3 · Geopolitical risk, trade policy & wider commodities")
+        col1, col2, col3 = st.columns(3, gap="medium")
+        with col1:
+            gpr_move = st.slider(
+                "Geopolitical Risk Index (GPR) change (%)", -50.0, 100.0,
+                step=5.0, key="scenario_gpr_move",
+                help="Applies the same proportional shock to the stored GPR total, threats and acts indices."
+            )
+            tpu_move = st.slider(
+                "Trade Policy Uncertainty (TPU) change (%)", -50.0, 100.0,
+                step=5.0, key="scenario_tpu_move"
+            )
+        with col2:
+            ttf_move = st.slider("European natural gas · TTF (%)", -30.0, 30.0, step=1.0, key="scenario_ttf_move")
+            wheat_move = st.slider("Wheat price (%)", -30.0, 30.0, step=1.0, key="scenario_wheat_move")
+        with col3:
+            urea_move = st.slider("Urea / fertilizer price (%)", -30.0, 30.0, step=1.0, key="scenario_urea_move")
+            chosen_horizon = st.selectbox(
+                "ML scenario horizon", SCENARIO_HORIZONS, key="scenario_horizon",
+                format_func=lambda h: labels[h],
+                help="The 1- and 4-session choices are excluded here because the selected production method is a zero-return baseline and ignores scenario features."
             )
 
     macro_shocks = {
@@ -575,12 +664,14 @@ with scenario_tab:
     }
 
     st.markdown(
-        '<div class="callout-warn"><strong>Important:</strong> GPR and TPU inputs are lagged '
-        'historical indices, not real-time news sentiment. The GPR slider moves its total, threats '
-        'and acts series together. The model learns historical associations; the scenario does not '
-        'prove that a geopolitical event causes a specific oil-price move.</div>',
+        '<div class="callout-warn"><strong>Model coverage:</strong> GPR and TPU are lagged historical indices, not live news or event detection. '
+        'Supply-chain disruption is represented only indirectly through the GPR, global-production and commodity assumptions; '
+        'there is no standalone shipping-lane feature. Strategic Petroleum Reserve / emergency-stock releases are not a trained input. '
+        'The inventory control above refers to US commercial crude stocks, not emergency reserves.</div>',
         unsafe_allow_html=True
     )
+
+    st.caption("Scenario presets are illustrative bundles. The model reflects historical associations, not causal effects or live event detection.")
 
     try:
         scenario_x, scenario_close = make_scenario_features(
@@ -602,7 +693,7 @@ with scenario_tab:
         a, b, c = st.columns(3, gap="medium")
         a.metric("Scenario reference WTI price", f"USD {scenario_close:,.2f}/bbl")
         b.metric(
-            "Scenario estimated WTI close", f"USD {scenario_price:,.2f}/bbl",
+            "Scenario model-estimated WTI close", f"USD {scenario_price:,.2f}/bbl",
             delta=f"USD {delta_price:+,.2f} vs baseline"
         )
         c.metric(
@@ -612,12 +703,12 @@ with scenario_tab:
 
         comparison = pd.DataFrame([
             {
-                "Case": "Current baseline", "Reference WTI close (USD/bbl)": current_close,
+                "Case": "Base-case model output", "Reference WTI close (USD/bbl)": current_close,
                 "Expected change": baseline_return * 100,
                 "Estimated WTI close (USD/bbl)": baseline_price
             },
             {
-                "Case": "What-if scenario", "Reference WTI close (USD/bbl)": scenario_close,
+                "Case": "Selected scenario output", "Reference WTI close (USD/bbl)": scenario_close,
                 "Expected change": scenario_return * 100,
                 "Estimated WTI close (USD/bbl)": scenario_price
             }
@@ -635,29 +726,33 @@ with scenario_tab:
             "directly changes the starting WTI price. Compare expected changes to see the model "
             "response beyond that direct price adjustment."
         )
-        if chosen_horizon in (5, 10, 20):
+        if not baseline["beats_zero"]:
             st.warning(
-                "This horizon uses an experimental ExtraTrees model; on the current holdout "
-                "it did not beat the zero-change benchmark."
+                "This scenario output is produced by an experimental ExtraTrees model. "
+                "On the current chronological holdout it did not beat the zero-change benchmark, "
+                "so treat the result as an exploratory what-if response, not a proven forecast improvement."
             )
         else:
             st.info(
-                "This horizon uses a neutral zero-change baseline. It does not produce a "
-                "directional market forecast, even when hypothetical assumptions are changed."
+                "This experimental horizon performed better than the zero-change benchmark on the current chronological holdout. "
+                "That is encouraging, but it is not a guarantee of future accuracy."
             )
+        st.caption(
+            "Tree-based models can return the same estimate for small slider movements when the changed values remain inside the same decision regions."
+        )
     except Exception as exc:
         st.error(f"Scenario calculation unavailable: {type(exc).__name__}: {exc}")
 
-    with st.expander("Why do 64 model features have 13 scenario controls?"):
+    with st.expander("What the 64 model features contain"):
         st.write(
-            "The 64 features include many automatically calculated WTI and DXY indicators. "
-            "The 13 controls are the assumptions a user can change: WTI, DXY, inventories, rigs, "
-            "six other commodity prices, GPR, TPU and global oil production."
+            "The 13 controls adjust model input families. The remaining features are automatically "
+            "calculated from historical observations, including return lags, momentum, volatility, "
+            "moving-average distance, drawdown and changes in DXY, inventories and rig counts."
         )
         st.write(
-            "OPEC+ decisions, shipping disruptions, weather, refinery utilization and interest rates "
-            "are not separate inputs in this version. Do not treat them as factors that change this "
-            "forecast until they have historical data, a defined lag, retraining and out-of-sample validation."
+            "Not direct model inputs in this version: country-by-country strategic reserves, IEA emergency-stock release volumes, "
+            "named conflict events, tanker-route disruptions, pipeline outages, OPEC+ policy decisions, weather, refinery utilization and interest rates. "
+            "These require aligned historical series, a publication-lag policy, retraining and out-of-sample validation before they can affect model output."
         )
 
 with st.expander("Data freshness, sources and model diagnostics"):
