@@ -73,3 +73,7 @@ pip install -r requirements.txt
 python scripts/refresh_and_train.py
 streamlit run app.py
 ```
+
+
+### Next-session forecast validation
+The next-session return selector compares four candidate methods using expanding chronological validation folds. A candidate is selected only if it improves pooled MAE over the zero-return baseline by at least 2% and wins at least three folds; otherwise the neutral baseline remains active. This is an experimental estimate, not a guaranteed market price.
