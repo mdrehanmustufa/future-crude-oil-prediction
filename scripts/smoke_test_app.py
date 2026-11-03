@@ -131,6 +131,21 @@ state = {
     "feature_names": list(artifacts["feature_names"]),
     "feature_idx": matches[-1],
 }
+# Exercise the same one-time migration path used by app.py for old saved
+# artifacts. It regenerates chronological expanding-window estimates.
+if any(
+    artifacts["models"][h].get("backtest_method") != "expanding_window_21"
+    for h in (5, 10, 20)
+):
+    refreshed_state = fe.train_hybrid_horizons(df)
+    state["models"] = refreshed_state["models"]
+    state["feature_date"] = pd.Timestamp(refreshed_state["feature_date"]).normalize()
+    state["current_close"] = float(refreshed_state["current_close"])
+    refreshed_matches = df.index[df["Date"].eq(state["feature_date"])].tolist()
+    assert refreshed_matches, "Refreshed feature date is absent from the saved CSV."
+    state["feature_idx"] = refreshed_matches[-1]
+for h in (5, 10, 20):
+    assert state["models"][h].get("backtest_method") == "expanding_window_21"
 assert np.isclose(
     float(status["current_wti_close"]), state["current_close"],
     rtol=1e-5, atol=0.01
@@ -284,6 +299,10 @@ for h in (1, 4, 5, 10, 20):
     assert len(np.unique(np.round(recent_estimates, 2))) >= 4, (
         f"{h}-session recent model-estimate line is unexpectedly flat."
     )
+    if h in (5, 10, 20):
+        assert rows[-1]["target_date"] >= rows[-1]["feature_date"], (
+            f"{h}-session walk-forward rows have invalid dates."
+        )
     for row in rows[:5]:
         assert pd.Timestamp(row["target_date"]) > pd.Timestamp(row["feature_date"])
         assert row["actual_close"] > 0 and row["estimated_close"] > 0
