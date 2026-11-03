@@ -4,11 +4,22 @@ A Streamlit research dashboard explaining WTI and Brent benchmarks, providing mu
 
 ## Dashboard guide
 
-1. **Market snapshot** — saved daily WTI and Brent futures closes, source dates, and Brent-minus-WTI spread when both dates match.
-2. **Scenario Lab** — primary Expo view, with presets and 13 adjustable inputs covering WTI, DXY, US commercial crude inventories, US oil rigs, six commodity markets, GPR, TPU and global oil production. The scenario estimate is displayed beside the controls and updates when any control changes. The current market snapshot shows WTI, Brent, DXY and the synchronized spread.
-3. **Forecast & Backtest** — multi-horizon estimates, chronological holdout diagnostics and a 90-day previous-close benchmark replay.
+1. **Market snapshot** — latest completed daily WTI, Brent and DXY closes from Yahoo Finance when available, with saved-dataset fallback and source dates.
+2. **Scenario Lab** — six simple, level-based controls: WTI price, Brent price, DXY, US commercial crude stocks, US oil-directed rig count and the Geopolitical Risk Index (GPR). A Reset button restores the latest reference levels.
+3. **Forecast & Backtest** — multi-horizon estimates, chronological holdout diagnostics and the 90-day previous-close benchmark replay.
 
-The dashboard labels saved daily futures closes and model estimates explicitly; it does not call them live quotes or tomorrow's opening price. The target is WTI future close, not open.
+The six visible controls do not replace the model inputs. All 64 trained features still go into the saved model. The other stored features (for example Urals, ESPO, TTF, wheat, urea, TPU and global production) are held at their latest saved row values while the six user-facing scenario assumptions are varied.
+
+### Scenario reference levels
+
+- **Market prices:** latest completed Yahoo Finance daily close for CL=F (WTI), BZ=F (Brent) and DX-Y.NYB (DXY), refreshed in the app cache every 15 minutes. When Yahoo Finance is unavailable, the app falls back to the saved dataset and shows that fallback in the source label.
+- **US commercial crude stocks:** 410.6 million barrels, EIA week ending 23 October 2026 (published 28 October 2026). This excludes the Strategic Petroleum Reserve.
+- **US oil-directed rigs:** 462, Baker Hughes count for 30 October 2026. This is the oil-specific count, not the total U.S. oil-and-gas rig count.
+- **Geopolitical Risk Index:** 150.52, October 2026 monthly reading (Caldara–Iacoviello index, as reported by MacroDataHub, last updated 2 November 2026).
+
+These reference series have different release frequencies. The market quotes are daily; commercial stocks and rig counts are weekly; GPR is monthly. The Reset button restores the latest published reference level for each series, not a fabricated same-day observation.
+
+The simple UI controls use **absolute levels**, not percentage shocks. Inventory is entered in million barrels and converted to the model's thousand-barrel feature. The GPR value scales the stored total, threats and acts feature trio together.
 
 ## Trained model inputs
 
@@ -29,12 +40,10 @@ Strategic Petroleum Reserve (SPR) and IEA emergency-stock release volumes, OPEC+
 
 ## Scenario controls and units
 
-- WTI and DXY shocks are percentages applied to the latest complete feature row.
-- Inventory is in thousand barrels (kbbl); +2,000 kbbl is +2 million barrels.
-- Rig count is a number of active oil-directed rigs.
-- The six commodity controls are percentage shocks to the corresponding stored lagged values.
-- The GPR control applies the same proportional shock to total, threats and acts indices.
-- TPU and global production controls apply proportional shocks to their stored lagged values.
+- WTI, Brent and DXY controls are absolute market/index levels in USD per barrel or index points.
+- Inventory is an absolute level in million barrels; the feature transformation converts it to the model's thousand-barrel (kbbl) unit.
+- Rig count is an absolute number of active U.S. oil-directed rigs.
+- GPR is an absolute monthly index level; the stored total, threats and acts features move proportionally together.
 
 Scenarios are conditional feature experiments, not causal economic simulations. A changed input does not prove it causes an oil-price move.
 
