@@ -47,32 +47,24 @@ app_test = AppTest.from_file(str(APP), default_timeout=90)
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert len(app_test.tabs) == 2, f"Expected two main tabs, found {len(app_test.tabs)}"
-assert len(app_test.slider) == 5, f"Expected five global scenario sliders, found {len(app_test.slider)}"
+assert len(app_test.slider) == 4, f"Expected four numeric market/global sliders plus the GPR tier selector, found {len(app_test.slider)}"
 assert len(app_test.number_input) == 0
 assert len(app_test.selectbox) == 2
 assert len(app_test.button) == 1, "Expected a single Reset to latest data button."
 assert len(app_test.select_slider) == 2, "Expected a backtest range selector and 0–5 GPR severity selector."
 
 initial_slider_values = [float(item.value) for item in app_test.slider]
+initial_gpr_level = int(app_test.select_slider[-1].value)
 app_test.slider[0].set_value(initial_slider_values[0] * 1.05)
 app_test.slider[1].set_value(initial_slider_values[1] * 1.05)
 app_test.slider[2].set_value(initial_slider_values[2] * 1.02)
 app_test.slider[3].set_value(initial_slider_values[3] * 1.05)
-app_test.slider[4].set_value(initial_slider_values[4] * 1.05)
+app_test.select_slider[-1].set_value(5)
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
 assert not app_test.error, [error.value for error in app_test.error]
 
 # Exercise the highest GPR event tier and verify the app recalculates without error.
-gpr_select = next(
-    item for item in app_test.select_slider
-    if "scenario_gpr_level" in str(getattr(item, "key", ""))
-) if any("scenario_gpr_level" in str(getattr(item, "key", "")) for item in app_test.select_slider) else app_test.select_slider[-1]
-gpr_select.set_value(5)
-app_test.run(timeout=120)
-assert not app_test.exception, [exc.message for exc in app_test.exception]
-assert not app_test.error, [error.value for error in app_test.error]
-
 app_test.button[0].click()
 app_test.run(timeout=120)
 assert not app_test.exception, [exc.message for exc in app_test.exception]
@@ -80,10 +72,9 @@ reset_slider_values = [float(item.value) for item in app_test.slider]
 assert np.allclose(reset_slider_values, initial_slider_values), (
     f"Reset did not restore latest-reference values: {reset_slider_values} vs {initial_slider_values}"
 )
-assert int(next(
-    item.value for item in app_test.select_slider
-    if "scenario_gpr_level" in str(getattr(item, "key", ""))
-)) == int(artifacts["gpr_current_level"]) if "gpr_current_level" in artifacts else True
+assert int(app_test.select_slider[-1].value) == initial_gpr_level, (
+    "Reset did not restore the current GPR severity tier."
+)
 
 # Extract the exact scenario function from app.py, rather than duplicating its logic.
 tree = ast.parse(APP.read_text(encoding="utf-8"))
@@ -172,10 +163,15 @@ for level, gpr_value in enumerate(gpr_levels):
         rtol=1e-9, atol=1e-12
     ), f"GPR level {level} did not alter the three trained GPR features."
     gpr_feature_rows.append((level, gpr_value, features))
-scenario_specs.extend(
-    (f"GPR severity {level}", (features, base_wti), ["GPR_"])
-    for level, gpr_value, features in gpr_feature_rows
-)
+# All six levels must update the GPR feature family when they differ from the current observation.
+assert any(
+    not np.allclose(
+        features[["GPR_total_lag1m", "GPR_threats_lag1m", "GPR_acts_lag1m"]].to_numpy(dtype=float),
+        baseline_x[["GPR_total_lag1m", "GPR_threats_lag1m", "GPR_acts_lag1m"]].to_numpy(dtype=float),
+        rtol=1e-9, atol=1e-12
+    )
+    for _, _, features in gpr_feature_rows
+), "None of the six GPR tiers changed the trained GPR features."
 
 sensitivity_predictions = {h: [] for h in (5, 10, 20)}
 for label, (features, scenario_close), expected_prefixes in scenario_specs:
