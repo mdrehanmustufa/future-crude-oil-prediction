@@ -12,7 +12,8 @@ import yfinance as yf
 
 from forecast_engine import (
     HORIZONS, EXPANDED_FEATURES, standardize,
-    compute_expanded_features, infer_recipes, feature_candidates
+    compute_expanded_features, infer_recipes, feature_candidates,
+    train_hybrid_horizons
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -165,6 +166,39 @@ def load_saved_state():
         if record is None or "pipeline" not in record or "latest_x" not in record:
             raise ValueError(f"Missing saved pipeline/input for horizon {horizon}.")
         models[horizon] = record
+
+    # Older saved artifacts used one static model fit for the entire holdout.
+    # Rebuild the walk-forward holdout once per Streamlit process when that
+    # legacy artifact is detected, so the deployed chart is not left stale
+    # until the next scheduled training workflow.
+    required_backtest_method = "expanding_window_21"
+    stale_horizons = [
+        horizon for horizon in (5, 10, 20)
+        if models[horizon].get("backtest_method") != required_backtest_method
+    ]
+    if stale_horizons:
+        import gc
+        del artifacts
+        del models
+        gc.collect()
+        refreshed = train_hybrid_horizons(df)
+        models = refreshed["models"]
+        feature_date = pd.Timestamp(refreshed["feature_date"]).normalize()
+        market_date = pd.Timestamp(refreshed["market_date"]).normalize()
+        current_close = float(refreshed["current_close"])
+        refreshed_matches = df.index[df["Date"].eq(feature_date)].tolist()
+        if not refreshed_matches:
+            raise ValueError(
+                f"Refreshed feature date {feature_date.date()} is not present in saved CSV."
+            )
+        feature_idx = refreshed_matches[-1]
+        refreshed_close = float(df.loc[feature_idx, "WTI_Close"])
+        if not np.isclose(refreshed_close, current_close, rtol=1e-5, atol=0.01):
+            raise ValueError("Refreshed model and dataset do not match: WTI close differs.")
+        feature_names = list(refreshed["feature_names"])
+        status = dict(status)
+        status["backtest_rebuilt_on_app_startup"] = True
+        status["backtest_method"] = required_backtest_method
 
     brent_close = None
     brent_date = None
