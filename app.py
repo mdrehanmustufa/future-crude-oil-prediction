@@ -127,6 +127,31 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+def backtest_actuals_match_dataset(model_record, dataset):
+    """Check whether saved holdout actuals equal the observed WTI close on each target date.
+
+    This prevents a stale/misaligned artifact from drawing an artificial flat
+    Actual series even when the current historical CSV contains changing prices.
+    """
+    rows = model_record.get("holdout_backtest", [])
+    if len(rows) < 30:
+        return False
+    backtest = pd.DataFrame(rows)
+    if not {"target_date", "actual_close"}.issubset(backtest.columns):
+        return False
+    target_dates = pd.to_datetime(backtest["target_date"], errors="coerce").dt.normalize()
+    saved_actuals = pd.to_numeric(backtest["actual_close"], errors="coerce").to_numpy(dtype=float)
+    market_close_by_date = dataset.set_index("Date")["WTI_Close"]
+    expected_actuals = pd.to_numeric(
+        market_close_by_date.reindex(target_dates).reset_index(drop=True),
+        errors="coerce"
+    ).to_numpy(dtype=float)
+    valid = np.isfinite(saved_actuals) & np.isfinite(expected_actuals)
+    if valid.sum() < 30 or not valid.all():
+        return False
+    return bool(np.allclose(saved_actuals, expected_actuals, rtol=0.0, atol=0.03))
+
+
 @st.cache_resource
 def load_saved_state():
     for path in [DATA_FILE, MODEL_FILE, STATUS_FILE]:
@@ -176,7 +201,15 @@ def load_saved_state():
         horizon for horizon in (5, 10, 20)
         if models[horizon].get("backtest_method") != required_backtest_method
     ]
-    if stale_horizons:
+    # Also compare every saved actual point with the raw WTI close for that
+    # target date. A method marker alone cannot detect an artifact whose
+    # holdout rows were built against stale/misaligned actual-price data.
+    mismatched_actual_horizons = [
+        horizon for horizon in (5, 10, 20)
+        if not backtest_actuals_match_dataset(models[horizon], df)
+    ]
+    rebuild_horizons = sorted(set(stale_horizons + mismatched_actual_horizons))
+    if rebuild_horizons:
         import gc
         del artifacts
         del models
@@ -198,6 +231,10 @@ def load_saved_state():
         feature_names = list(refreshed["feature_names"])
         status = dict(status)
         status["backtest_rebuilt_on_app_startup"] = True
+        status["backtest_rebuild_reason"] = (
+            f"Legacy method: {stale_horizons}; actual-price/data mismatch: "
+            f"{mismatched_actual_horizons}"
+        )
         status["backtest_method"] = required_backtest_method
 
     brent_close = None
