@@ -150,6 +150,7 @@ state = {
 if any(
     artifacts["models"][h].get("backtest_method") != "expanding_window_21"
     or not actuals_match_function(artifacts["models"][h], df)
+    or not coverage_matches_function(artifacts["models"][h], df, feature_matrix, h)
     for h in (5, 10, 20)
 ):
     refreshed_state = fe.train_hybrid_horizons(df)
