@@ -53,7 +53,7 @@ The WTI model now uses 64 numeric features across eight families:
 - US oil rig-count level and changes.
 - US crude inventory level and changes.
 
-The dataset contains the historical lagged columns for these added macro/commodity factors. Their values are carried forward on appended WTI dates unless their own source is refreshed. GPR and TPU are lagged historical indices, not live news sentiment. The Brent card uses Yahoo continuous futures BZ=F for a visible benchmark quote; the model's CMD_brent_lag1 is a separate stored historical lagged feature.
+The dataset contains the historical lagged columns for these added macro/commodity factors. Their values are carried forward on appended WTI dates unless their own source is refreshed. The six lagged commodity series (Brent, Urals, ESPO, TTF, wheat and urea) are also forward-filled from the last known observation across publication gaps; no future value is back-filled. GPR and TPU are lagged historical indices, not live news sentiment. The Brent card uses Yahoo continuous futures BZ=F for a visible benchmark quote; the model's CMD_brent_lag1 is a separate stored historical lagged feature.
 
 Strategic Petroleum Reserve (SPR) and IEA emergency-stock release volumes, OPEC+ policy, current war/peace headlines outside the lagged GPR series, tanker/shipping disruptions, weather, refinery utilization and interest rates are not separate trained inputs in this version. US commercial crude inventory is not the same as strategic emergency stocks. A UI slider alone is not a valid model feature; each new factor requires historical data, date alignment, lag policy, retraining and out-of-sample validation.
 
