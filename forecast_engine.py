@@ -66,6 +66,12 @@ EXOGENOUS_FEATURES = [
     "GPR_total_lag1m", "GPR_threats_lag1m", "GPR_acts_lag1m",
     "TPU_lag1m", "EIA_world_prod_lag3m",
 ]
+# Lagged commodity series update intermittently. Carry the last known historical
+# value forward until a new observation is published; never back-fill from future.
+CARRY_FORWARD_COMMODITY_FEATURES = [
+    "CMD_brent_lag1", "CMD_urals_lag1", "CMD_espo_lag1",
+    "CMD_ttf_lag1", "CMD_wheat_lag1", "CMD_urea_lag1",
+]
 EXPANDED_FEATURES = EXPANDED_FEATURES + EXOGENOUS_FEATURES
 assert len(EXPANDED_FEATURES) == 64 and len(set(EXPANDED_FEATURES)) == 64
 
@@ -487,11 +493,17 @@ def compute_expanded_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # Original dataset macro/commodity inputs. These columns already carry
     # conservative source lags (daily/monthly/three-month); do not shift them again.
+    # The six lagged commodity series update intermittently. Forward-fill only
+    # from earlier observations so missing source-publication days do not exclude
+    # otherwise valid daily WTI rows from training and the backtest chart.
     for col in EXOGENOUS_FEATURES:
-        feat[col] = pd.to_numeric(
+        values = pd.to_numeric(
             source.get(col, pd.Series(np.nan, index=source.index)),
             errors="coerce"
         )
+        if col in CARRY_FORWARD_COMMODITY_FEATURES:
+            values = values.ffill()
+        feat[col] = values
 
     # Deterministic order, and keep only the frozen model-input list.
     return feat.loc[:, EXPANDED_FEATURES].replace([np.inf, -np.inf], np.nan)

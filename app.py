@@ -127,6 +127,37 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+def backtest_coverage_matches_dataset(model_record, dataset, feature_matrix, horizon):
+    """Verify saved holdout points cover every eligible chronological test date."""
+    close = pd.to_numeric(dataset["WTI_Close"], errors="coerce")
+    target_dates = dataset["Date"].shift(-int(horizon))
+    target_returns = close.shift(-int(horizon)) / close - 1.0
+    feature_complete = feature_matrix.notna().all(axis=1) & close.notna()
+    feature_cutoff = pd.Timestamp(dataset.loc[feature_complete, "Date"].max())
+    labelled = (
+        feature_complete & target_returns.notna() & target_dates.notna()
+        & (target_dates <= feature_cutoff) & np.isfinite(target_returns)
+    )
+    idx = np.flatnonzero(labelled.to_numpy())
+    if len(idx) < 330:
+        return False
+    split = int(len(idx) * 0.85)
+    split = min(max(split, 50), len(idx) - 30)
+    dates = dataset.loc[idx, "Date"].reset_index(drop=True)
+    target_local = target_dates.iloc[idx].reset_index(drop=True)
+    test_start = pd.Timestamp(dates.iloc[split])
+    test_local = np.flatnonzero(
+        (dates >= test_start).to_numpy()
+        & (target_local <= feature_cutoff).to_numpy()
+    )
+    expected = pd.to_datetime(target_local.iloc[test_local], errors="coerce").dt.normalize().tolist()
+    rows = model_record.get("holdout_backtest", [])
+    saved = pd.to_datetime(
+        pd.Series([row.get("target_date") for row in rows]), errors="coerce"
+    ).dt.normalize().tolist()
+    return bool(len(saved) == len(expected) and saved == expected)
+
+
 def backtest_actuals_match_dataset(model_record, dataset):
     """Check whether saved holdout actuals equal the observed WTI close on each target date.
 
@@ -185,6 +216,7 @@ def load_saved_state():
     if not np.isclose(csv_close, current_close, rtol=1e-5, atol=0.01):
         raise ValueError("Saved model and dataset do not match: WTI close differs.")
 
+    current_feature_matrix = compute_expanded_features(df)
     models = {}
     for horizon in HORIZONS:
         record = artifacts["models"].get(horizon, artifacts["models"].get(str(horizon)))
@@ -208,7 +240,15 @@ def load_saved_state():
         horizon for horizon in (5, 10, 20)
         if not backtest_actuals_match_dataset(models[horizon], df)
     ]
-    rebuild_horizons = sorted(set(stale_horizons + mismatched_actual_horizons))
+    incomplete_coverage_horizons = [
+        horizon for horizon in (5, 10, 20)
+        if not backtest_coverage_matches_dataset(
+            models[horizon], df, current_feature_matrix, horizon
+        )
+    ]
+    rebuild_horizons = sorted(set(
+        stale_horizons + mismatched_actual_horizons + incomplete_coverage_horizons
+    ))
     if rebuild_horizons:
         import gc
         del artifacts
@@ -229,13 +269,25 @@ def load_saved_state():
         if not np.isclose(refreshed_close, current_close, rtol=1e-5, atol=0.01):
             raise ValueError("Refreshed model and dataset do not match: WTI close differs.")
         feature_names = list(refreshed["feature_names"])
+        current_feature_matrix = refreshed["feature_matrix"]
         status = dict(status)
         status["backtest_rebuilt_on_app_startup"] = True
         status["backtest_rebuild_reason"] = (
             f"Legacy method: {stale_horizons}; actual-price/data mismatch: "
-            f"{mismatched_actual_horizons}"
+            f"{mismatched_actual_horizons}; incomplete holdout coverage: "
+            f"{incomplete_coverage_horizons}"
         )
         status["backtest_method"] = required_backtest_method
+        remaining_gaps = [
+            horizon for horizon in (5, 10, 20)
+            if not backtest_coverage_matches_dataset(
+                models[horizon], df, current_feature_matrix, horizon
+            )
+        ]
+        if remaining_gaps:
+            raise ValueError(
+                f"Walk-forward backtest still misses eligible dates for horizons: {remaining_gaps}"
+            )
 
     brent_close = None
     brent_date = None

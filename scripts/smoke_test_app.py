@@ -84,12 +84,14 @@ functions = [
     if isinstance(node, ast.FunctionDef)
     and node.name in {
         "make_scenario_features", "prototype_stress_multiplier",
-        "scenario_price_from_current_reference", "backtest_actuals_match_dataset"
+        "scenario_price_from_current_reference", "backtest_actuals_match_dataset",
+        "backtest_coverage_matches_dataset"
     }
 ]
 assert {node.name for node in functions} == {
     "make_scenario_features", "prototype_stress_multiplier",
-    "scenario_price_from_current_reference", "backtest_actuals_match_dataset"
+    "scenario_price_from_current_reference", "backtest_actuals_match_dataset",
+    "backtest_coverage_matches_dataset"
 }
 
 namespace = {
@@ -105,8 +107,19 @@ scenario_function = namespace["make_scenario_features"]
 stress_multiplier = namespace["prototype_stress_multiplier"]
 anchor_scenario_price = namespace["scenario_price_from_current_reference"]
 actuals_match_function = namespace["backtest_actuals_match_dataset"]
+coverage_matches_function = namespace["backtest_coverage_matches_dataset"]
 
 df = fe.standardize(pd.read_csv(DATA, parse_dates=["Date"]))
+# Lagged commodity gaps must not remove valid daily WTI observations.
+feature_matrix = fe.compute_expanded_features(df)
+recent_mask = df["Date"].ge(df["Date"].max() - pd.Timedelta(days=240))
+recent_coverage = feature_matrix.loc[recent_mask].notna().all(axis=1).mean()
+assert recent_coverage >= 0.95, f"Recent 64-feature completeness too low: {recent_coverage:.1%}"
+for col in fe.CARRY_FORWARD_COMMODITY_FEATURES:
+    original = pd.to_numeric(df[col], errors="coerce")
+    first_known = original.first_valid_index()
+    assert first_known is not None
+    assert feature_matrix.loc[first_known:, col].notna().all(), f"{col} still contains gaps after its first known value."
 production_values = pd.to_numeric(df["EIA_world_prod_lag3m"], errors="coerce").dropna()
 production_values = production_values[production_values > 0]
 source_text = APP.read_text(encoding="utf-8")
@@ -150,6 +163,13 @@ for h in (5, 10, 20):
     assert state["models"][h].get("backtest_method") == "expanding_window_21"
     assert actuals_match_function(state["models"][h], df), (
         f"{h}-session saved actual close values do not match raw WTI closes by target date."
+    )
+    assert coverage_matches_function(state["models"][h], df, feature_matrix, h), (
+        f"{h}-session holdout misses eligible feature-complete dates."
+    )
+    tail_dates = pd.to_datetime([row["target_date"] for row in state["models"][h]["holdout_backtest"][-30:]])
+    assert (tail_dates.max() - tail_dates.min()).days <= 65, (
+        f"{h}-session last 30 holdout points span too many days."
     )
 assert np.isclose(
     float(status["current_wti_close"]), state["current_close"],
