@@ -104,6 +104,7 @@ exec(compile(module, str(APP), "exec"), namespace)
 scenario_function = namespace["make_scenario_features"]
 stress_multiplier = namespace["prototype_stress_multiplier"]
 anchor_scenario_price = namespace["scenario_price_from_current_reference"]
+actuals_match_function = namespace["backtest_actuals_match_dataset"]
 
 df = fe.standardize(pd.read_csv(DATA, parse_dates=["Date"]))
 production_values = pd.to_numeric(df["EIA_world_prod_lag3m"], errors="coerce").dropna()
@@ -135,6 +136,7 @@ state = {
 # artifacts. It regenerates chronological expanding-window estimates.
 if any(
     artifacts["models"][h].get("backtest_method") != "expanding_window_21"
+    or not actuals_match_function(artifacts["models"][h], df)
     for h in (5, 10, 20)
 ):
     refreshed_state = fe.train_hybrid_horizons(df)
@@ -146,6 +148,9 @@ if any(
     state["feature_idx"] = refreshed_matches[-1]
 for h in (5, 10, 20):
     assert state["models"][h].get("backtest_method") == "expanding_window_21"
+    assert actuals_match_function(state["models"][h], df), (
+        f"{h}-session saved actual close values do not match raw WTI closes by target date."
+    )
 assert np.isclose(
     float(status["current_wti_close"]), state["current_close"],
     rtol=1e-5, atol=0.01
