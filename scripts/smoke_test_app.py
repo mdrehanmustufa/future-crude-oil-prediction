@@ -84,12 +84,12 @@ functions = [
     if isinstance(node, ast.FunctionDef)
     and node.name in {
         "make_scenario_features", "prototype_stress_multiplier",
-        "scenario_price_from_current_reference"
+        "scenario_price_from_current_reference", "backtest_actuals_match_dataset"
     }
 ]
 assert {node.name for node in functions} == {
     "make_scenario_features", "prototype_stress_multiplier",
-    "scenario_price_from_current_reference"
+    "scenario_price_from_current_reference", "backtest_actuals_match_dataset"
 }
 
 namespace = {
